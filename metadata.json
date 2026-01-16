@@ -1,0 +1,7 @@
+{
+  "name": "Inner-Voice-Method-Trainer 1.0",
+  "description": "Uma plataforma interativa para praticar o método Inner Voice, utilizando IA para auxiliar na escuta, ritmo, som e fluência da língua inglesa.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
