@@ -33,7 +33,6 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
 
   const currentMethod = METHODOLOGY.find(m => m.day === day)!;
 
-  // Scroll mais agressivo para acompanhar o streaming de texto
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -68,13 +67,15 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
       setLocalStatus('connecting');
       onStatusChange('connecting');
 
-      const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-      if (!hasKey) {
-        alert("Chave API ausente.");
-        await (window as any).aistudio.openSelectKey();
+      // Em deploy externo, usamos diretamente a chave injetada no ambiente
+      const apiKey = process.env.API_KEY;
+      if (!apiKey) {
+        console.error("API_KEY não configurada nas variáveis de ambiente.");
+        setLocalStatus('error');
+        return;
       }
       
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey });
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       const outputAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       
@@ -92,25 +93,15 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
         VOCÊ É UM MENTOR DO INNER VOICE METHOD. 
         TEXTO BASE: "${lessonContent}"
         
-        DIRETRIZ CRÍTICA: Seja EXTREMAMENTE DIRETO, OBJETIVO e CONCISO. Evite frases de preenchimento.
-        Vá direto ao ponto. Respostas curtas.
-
+        DIRETRIZ CRÍTICA: Seja EXTREMAMENTE DIRETO e CONCISO.
         MODO: ${isPractice ? 'TREINAMENTO TÉCNICO' : 'CONVERSAÇÃO NATURAL'}
 
         DIRETRIZES:
         ${isPractice 
-          ? `PRÁTICA TÉCNICA (${currentMethod.day}: ${currentMethod.title}).
-             INSTRUÇÃO: ${currentMethod.instruction}.
-             COMPORTAMENTO: Corrija apenas o som/ritmo. Seja breve.`
-          : `DIÁLOGO NATURAL. 
-             COMPORTAMENTO: NÃO peça repetições. Aja como um parceiro de conversa real. 
-             Fale sobre o tema do texto. Use vocabulário do texto naturalmente.
-             Respostas rápidas e fluidas.`
+          ? `PRÁTICA TÉCNICA (${currentMethod.day}: ${currentMethod.title}). INSTRUÇÃO: ${currentMethod.instruction}.`
+          : `DIÁLOGO NATURAL. NÃO peça repetições. Aja como um parceiro real.`
         }
-
-        LÍNGUA:
-        - 95% Inglês.
-        - Português apenas se estritamente necessário para clareza do método.
+        LÍNGUA: 95% Inglês.
       `;
 
       const sessionPromise = ai.live.connect({
@@ -139,12 +130,10 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
             scriptProcessor.connect(audioContextRef.current!.destination);
           },
           onmessage: async (message) => {
-            // Streaming de transcrição de entrada (aluno)
             if (message.serverContent?.inputTranscription) {
               currentInputTextRef.current += message.serverContent.inputTranscription.text;
               setDisplayInputText(currentInputTextRef.current);
             }
-            // Streaming de transcrição de saída (IA/Mentor) - Aparece ENQUANTO fala
             if (message.serverContent?.outputTranscription) {
               currentOutputTextRef.current += message.serverContent.outputTranscription.text;
               setDisplayOutputText(currentOutputTextRef.current);
@@ -153,7 +142,6 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
             if (message.serverContent?.turnComplete) {
               const userT = currentInputTextRef.current;
               const aiT = currentOutputTextRef.current;
-              
               if (userT.trim() || aiT.trim()) {
                 setHistory(prev => [
                   ...prev,
@@ -161,7 +149,6 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
                   { speaker: 'ai' as const, text: aiT, timestamp: Date.now() }
                 ].filter(i => i.text.trim() !== ''));
               }
-
               currentInputTextRef.current = '';
               currentOutputTextRef.current = '';
               setDisplayInputText('');
@@ -191,7 +178,7 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
               nextStartTimeRef.current = 0;
             }
           },
-          onerror: (e: any) => {
+          onerror: () => {
             setLocalStatus('error');
             onStatusChange('error');
             stopSession();
@@ -214,7 +201,7 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
   if (localStatus === 'connecting') {
     return (
       <div className="flex flex-col items-center gap-8 py-14">
-        <div className="w-20 h-20 border-[6px] border-slate-900 border-t-indigo-500 rounded-full animate-spin shadow-2xl"></div>
+        <div className="w-20 h-20 border-[6px] border-slate-900 border-t-indigo-500 rounded-full animate-spin"></div>
         <p className="text-slate-600 font-black text-[11px] uppercase tracking-[0.5em] animate-pulse italic">Iniciando Mentor...</p>
       </div>
     );
@@ -245,7 +232,7 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
       <div className="w-full max-w-2xl bg-slate-950/50 rounded-[3.5rem] overflow-hidden shadow-2xl h-[450px] flex flex-col border border-slate-800">
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-10 space-y-8 scroll-smooth">
           {history.map((item, idx) => (
-            <div key={idx} className={`flex flex-col ${item.speaker === 'user' ? 'items-end' : 'items-start'} animate-in slide-in-from-bottom-3`}>
+            <div key={idx} className={`flex flex-col ${item.speaker === 'user' ? 'items-end' : 'items-start'}`}>
               <span className={`text-[8px] font-black uppercase tracking-[0.3em] mb-2 ${item.speaker === 'user' ? 'text-indigo-500' : 'text-slate-600'}`}>
                 {item.speaker === 'user' ? 'User' : 'Mentor'}
               </span>
@@ -259,21 +246,19 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
             </div>
           ))}
           
-          {/* Transcrição em tempo real do Aluno */}
           {displayInputText && (
             <div className="flex flex-col items-end">
               <span className="text-[8px] font-black uppercase text-indigo-800 mb-2 italic tracking-widest">Listening...</span>
-              <div className="max-w-[85%] px-6 py-4 bg-slate-900/50 text-indigo-400/80 rounded-[1.8rem] rounded-tr-none text-[15px] italic border border-indigo-950 shadow-inner">
+              <div className="max-w-[85%] px-6 py-4 bg-slate-900/50 text-indigo-400/80 rounded-[1.8rem] rounded-tr-none text-[15px] italic border border-indigo-950">
                 {displayInputText}
               </div>
             </div>
           )}
 
-          {/* Transcrição em tempo real do Mentor (Enquanto fala) */}
           {displayOutputText && (
             <div className="flex flex-col items-start">
               <span className="text-[8px] font-black uppercase text-emerald-800 mb-2 italic tracking-widest">Speaking...</span>
-              <div className="max-w-[85%] px-6 py-4 bg-slate-900/40 text-slate-300 rounded-[1.8rem] rounded-tl-none text-[15px] border border-slate-800 shadow-xl">
+              <div className="max-w-[85%] px-6 py-4 bg-slate-900/40 text-slate-300 rounded-[1.8rem] rounded-tl-none text-[15px] border border-slate-800">
                 {displayOutputText}
               </div>
             </div>
@@ -283,9 +268,9 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
 
       <button
         onClick={stopSession}
-        className="group flex items-center gap-4 px-12 py-5 bg-slate-950 text-slate-400 border border-slate-800 rounded-full font-black hover:text-red-400 hover:border-red-900/50 transition-all shadow-2xl text-[10px] uppercase tracking-[0.3em] active:scale-95"
+        className="group flex items-center gap-4 px-12 py-5 bg-slate-950 text-slate-400 border border-slate-800 rounded-full font-black hover:text-red-400 transition-all text-[10px] uppercase tracking-[0.3em]"
       >
-        <span className="w-2 h-2 bg-red-600 rounded-full group-hover:animate-ping"></span>
+        <span className="w-2 h-2 bg-red-600 rounded-full"></span>
         Finalizar Sessão
       </button>
     </div>
