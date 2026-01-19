@@ -5,17 +5,14 @@ import { decodeAudioData, decodeBase64, createPcmBlob } from '../services/gemini
 import { DayOfWeek, TranscriptionItem } from '../types';
 import { METHODOLOGY } from '../constants';
 
-type SessionMode = 'practice' | 'chat';
-
 interface LiveVoiceSessionProps {
   day: DayOfWeek;
   lessonContent: string;
-  mode: SessionMode;
   onStatusChange: (status: 'idle' | 'connecting' | 'active' | 'error') => void;
   onClose: () => void;
 }
 
-const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent, mode, onStatusChange, onClose }) => {
+const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent, onStatusChange, onClose }) => {
   const [localStatus, setLocalStatus] = useState<'connecting' | 'active' | 'error'>('connecting');
   const [history, setHistory] = useState<TranscriptionItem[]>([]);
   
@@ -67,10 +64,9 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
       setLocalStatus('connecting');
       onStatusChange('connecting');
 
-      // Em deploy externo, usamos diretamente a chave injetada no ambiente
       const apiKey = process.env.API_KEY;
       if (!apiKey) {
-        console.error("API_KEY não configurada nas variáveis de ambiente.");
+        console.error("API_KEY não configurada.");
         setLocalStatus('error');
         return;
       }
@@ -87,21 +83,28 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
       
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      const isPractice = mode === 'practice';
-      
       const systemInstruction = `
         VOCÊ É UM MENTOR DO INNER VOICE METHOD. 
-        TEXTO BASE: "${lessonContent}"
+        TEXTO DA LIÇÃO ATUAL: "${lessonContent}"
         
-        DIRETRIZ CRÍTICA: Seja EXTREMAMENTE DIRETO e CONCISO.
-        MODO: ${isPractice ? 'TREINAMENTO TÉCNICO' : 'CONVERSAÇÃO NATURAL'}
+        PERSONALIDADE E DIRETRIZES GERAIS:
+        - Seja um LÍDER e GUIA proativo. Você dita o ritmo da sessão.
+        - Seja DIRETO, CONCISO e extremamente encorajador.
+        - IDIOMA: Use INGLÊS (95% do tempo). Use PORTUGUÊS apenas para traduções rápidas ou explicações técnicas breves.
+        - INÍCIO: Comece a falar imediatamente saudando o aluno e introduzindo a atividade do dia.
 
-        DIRETRIZES:
-        ${isPractice 
-          ? `PRÁTICA TÉCNICA (${currentMethod.day}: ${currentMethod.title}). INSTRUÇÃO: ${currentMethod.instruction}.`
-          : `DIÁLOGO NATURAL. NÃO peça repetições. Aja como um parceiro real.`
-        }
-        LÍNGUA: 95% Inglês.
+        MODO PRÁTICA INTEGRADO (${currentMethod.day}: ${currentMethod.title}):
+        - OBJETIVO TÉCNICO: ${currentMethod.instruction}.
+        - CONDUÇÃO ATIVA: Guie o aluno na técnica do dia. Use comandos como "Listen to this part...", "Try to produce this specific sound...".
+        - ATENÇÃO À REPETIÇÃO: Quando o exercício envolver repetição técnica, monitore omissões ou erros de ritmo/pronúncia e corrija na hora com precisão e gentileza.
+
+        CONVERSAÇÃO E ESTÍMULO (INTEGRADO):
+        - FLUIDEZ: Não se limite apenas à repetição técnica. Estimule uma conversa natural e espontânea baseada no texto.
+        - CURIOSIDADE: Faça perguntas abertas sobre o conteúdo. Peça opiniões do aluno. Crie cenários onde ele use o vocabulário da lição de forma criativa.
+        - CORREÇÃO GRAMATICAL GENTIL: Sempre que o aluno errar a gramática durante o diálogo, corrija-o de forma suave. Use a frase: "a better way to say that is..." para introduzir a correção e continue a conversa normalmente.
+        - EVITE REPETIÇÃO EXCESSIVA: No momento de conversa espontânea, não peça para o aluno repetir frases. O foco é a troca de ideias e a fluidez natural.
+
+        ASSUMA O COMANDO AGORA.
       `;
 
       const sessionPromise = ai.live.connect({
@@ -111,7 +114,7 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
           inputAudioTranscription: {},
           outputAudioTranscription: {},
           speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: isPractice ? 'Kore' : 'Zephyr' } },
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
           },
           systemInstruction: systemInstruction,
         },
@@ -210,21 +213,17 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
   return (
     <div className="flex flex-col items-center gap-8 w-full animate-in fade-in duration-700">
       <div className="relative">
-        <div className={`w-28 h-28 rounded-[2.5rem] flex items-center justify-center shadow-2xl border-2 transition-all duration-700 ${mode === 'practice' ? 'border-indigo-500 bg-slate-950' : 'border-emerald-500 bg-slate-950'}`}>
-           {mode === 'practice' ? (
-             <svg className="w-14 h-14 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
-           ) : (
-             <svg className="w-14 h-14 text-emerald-500" fill="currentColor" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
-           )}
+        <div className={`w-28 h-28 rounded-[2.5rem] flex items-center justify-center shadow-2xl border-2 border-indigo-500 bg-slate-950 transition-all duration-700`}>
+           <svg className="w-14 h-14 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
            <div className="absolute -top-1 -right-1">
-              <span className={`flex w-4 h-4 rounded-full ${mode === 'practice' ? 'bg-indigo-500' : 'bg-emerald-500'} animate-ping opacity-75`}></span>
+              <span className={`flex w-4 h-4 rounded-full bg-indigo-500 animate-ping opacity-75`}></span>
            </div>
         </div>
       </div>
 
       <div className="text-center">
-        <p className={`font-black text-[10px] uppercase tracking-[0.4em] mb-2 italic ${mode === 'practice' ? 'text-indigo-400' : 'text-emerald-400'}`}>
-          {mode === 'practice' ? 'Calibração em Curso' : 'Diálogo Aberto'}
+        <p className={`font-black text-[10px] uppercase tracking-[0.4em] mb-2 italic text-indigo-400`}>
+          Mentor Liderando
         </p>
         <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{currentMethod.title}</p>
       </div>
@@ -234,7 +233,7 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
           {history.map((item, idx) => (
             <div key={idx} className={`flex flex-col ${item.speaker === 'user' ? 'items-end' : 'items-start'}`}>
               <span className={`text-[8px] font-black uppercase tracking-[0.3em] mb-2 ${item.speaker === 'user' ? 'text-indigo-500' : 'text-slate-600'}`}>
-                {item.speaker === 'user' ? 'User' : 'Mentor'}
+                {item.speaker === 'user' ? 'Aluno' : 'Mentor'}
               </span>
               <div className={`max-w-[85%] px-6 py-4 rounded-[1.8rem] text-[15px] leading-relaxed font-medium shadow-2xl border ${
                 item.speaker === 'user' 
@@ -248,7 +247,7 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
           
           {displayInputText && (
             <div className="flex flex-col items-end">
-              <span className="text-[8px] font-black uppercase text-indigo-800 mb-2 italic tracking-widest">Listening...</span>
+              <span className="text-[8px] font-black uppercase text-indigo-800 mb-2 italic tracking-widest animate-pulse">Monitorando voz...</span>
               <div className="max-w-[85%] px-6 py-4 bg-slate-900/50 text-indigo-400/80 rounded-[1.8rem] rounded-tr-none text-[15px] italic border border-indigo-950">
                 {displayInputText}
               </div>
@@ -257,7 +256,7 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
 
           {displayOutputText && (
             <div className="flex flex-col items-start">
-              <span className="text-[8px] font-black uppercase text-emerald-800 mb-2 italic tracking-widest">Speaking...</span>
+              <span className="text-[8px] font-black uppercase text-emerald-800 mb-2 italic tracking-widest">Mentor instruindo...</span>
               <div className="max-w-[85%] px-6 py-4 bg-slate-900/40 text-slate-300 rounded-[1.8rem] rounded-tl-none text-[15px] border border-slate-800">
                 {displayOutputText}
               </div>
