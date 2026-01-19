@@ -9,7 +9,7 @@ import AccessControl from './components/AccessControl';
 const App: React.FC = () => {
   const [currentDay, setCurrentDay] = useState<DayOfWeek>(DayOfWeek.MONDAY);
   const [sessionStatus, setSessionStatus] = useState<'idle' | 'connecting' | 'active' | 'error'>('idle');
-  const [sessionMode, setSessionMode] = useState<'practice' | 'chat' | null>(null);
+  const [isSessionActive, setIsSessionActive] = useState<boolean>(false);
   const [lessonText, setLessonText] = useState<string>(DEFAULT_LESSON_CONTENT);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [tempText, setTempText] = useState<string>('');
@@ -200,50 +200,35 @@ const App: React.FC = () => {
             </div>
 
             <div className={`bg-slate-900/30 p-12 rounded-[4rem] border border-slate-800 shadow-2xl relative overflow-hidden transition-all ${isEditing ? 'opacity-20 blur-sm pointer-events-none' : 'opacity-100'}`}>
-               {sessionMode ? (
+               {isSessionActive ? (
                  <LiveVoiceSession 
                     day={currentDay}
                     lessonContent={lessonText}
-                    mode={sessionMode}
                     onStatusChange={setSessionStatus}
                     onClose={() => {
-                      setSessionMode(null);
+                      setIsSessionActive(false);
                       setSessionStatus('idle');
                     }}
                  />
                ) : (
                  <div className="flex flex-col items-center">
                     <div className="mb-14 text-center">
-                       <h3 className="text-3xl font-black text-white mb-2 italic tracking-tight">Prática Autônoma</h3>
-                       <p className="text-slate-500 font-medium text-sm">Dedique 15 minutos para calibrar sua percepção.</p>
+                       <h3 className="text-3xl font-black text-white mb-2 italic tracking-tight">Prática Mentorada</h3>
+                       <p className="text-slate-500 font-medium text-sm">IA Perceptiva com prática técnica e conversação integrada.</p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-2xl">
+                    <div className="flex justify-center w-full max-w-md">
                        <button
                          disabled={!lessonText}
-                         onClick={() => setSessionMode('practice')}
-                         className="group p-10 bg-indigo-600 rounded-[3rem] text-white flex flex-col items-center gap-6 transition-all hover:scale-[1.03] hover:bg-indigo-500 shadow-2xl shadow-indigo-950/40 disabled:opacity-20 disabled:grayscale"
+                         onClick={() => setIsSessionActive(true)}
+                         className="group w-full p-10 bg-indigo-600 rounded-[3rem] text-white flex flex-col items-center gap-6 transition-all hover:scale-[1.03] hover:bg-indigo-500 shadow-2xl shadow-indigo-950/40 disabled:opacity-20 disabled:grayscale"
                        >
                          <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center group-hover:bg-white/20 transition-colors shadow-inner">
                            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
                          </div>
                          <div className="text-center">
-                            <span className="block font-black text-lg italic mb-1">Modo Prática</span>
-                            <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-[0.2em] opacity-60">IA Perceptiva</span>
-                         </div>
-                       </button>
-
-                       <button
-                         disabled={!lessonText}
-                         onClick={() => setSessionMode('chat')}
-                         className="group p-10 bg-slate-800 rounded-[3rem] text-white flex flex-col items-center gap-6 transition-all hover:scale-[1.03] hover:bg-slate-700 shadow-2xl shadow-black/40 disabled:opacity-20 disabled:grayscale border border-slate-700/50"
-                       >
-                         <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center group-hover:bg-white/10 transition-colors shadow-inner">
-                           <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                         </div>
-                         <div className="text-center">
-                            <span className="block font-black text-lg italic mb-1">Fala Livre</span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] opacity-60">Integração Real</span>
+                            <span className="block font-black text-lg italic mb-1">Iniciar Modo Prática</span>
+                            <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-[0.2em] opacity-60">Foco + Conversação</span>
                          </div>
                        </button>
                     </div>
