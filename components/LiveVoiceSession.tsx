@@ -64,9 +64,9 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
       setLocalStatus('connecting');
       onStatusChange('connecting');
 
-      const apiKey = process.env.API_KEY;
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       if (!apiKey) {
-        console.error("API_KEY não configurada.");
+        console.error("VITE_GEMINI_API_KEY não configurada nas variáveis de ambiente.");
         setLocalStatus('error');
         return;
       }
