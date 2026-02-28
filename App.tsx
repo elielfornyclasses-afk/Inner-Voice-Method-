@@ -7,12 +7,17 @@ import DaySelector from './components/DaySelector';
 import LiveVoiceSession from './components/LiveVoiceSession';
 
 const App: React.FC = () => {
+  const { isSignedIn, isLoaded } = useUser();
+  const { signOut } = useAuth();
+  
   const [currentDay, setCurrentDay] = useState<DayOfWeek>(DayOfWeek.MONDAY);
   const [sessionStatus, setSessionStatus] = useState<'idle' | 'connecting' | 'active' | 'error'>('idle');
-  const [isSessionActive, setIsSessionActive] = useState<boolean>(false);
+  const [sessionMode, setSessionMode] = useState<'practice' | 'chat' | null>(null);
   const [lessonText, setLessonText] = useState<string>(DEFAULT_LESSON_CONTENT);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [tempText, setTempText] = useState<string>('');
+  const [showCheckIn, setShowCheckIn] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState<'signin' | 'signup' | null>(null);
   
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [activeCodeKey, setActiveCodeKey] = useState<string | null>(null);
