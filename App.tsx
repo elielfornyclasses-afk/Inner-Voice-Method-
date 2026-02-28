@@ -1,11 +1,10 @@
-import { Subscription } from './types';
-import SubscriptionBadge from './components/SubscriptionBadge';
 import React, { useState, useEffect } from 'react';
 import { SignIn, SignUp, UserButton, useUser, useAuth } from '@clerk/clerk-react';
-import { DayOfWeek } from './types';
+import { DayOfWeek, Subscription } from './types';
 import { METHODOLOGY, DEFAULT_LESSON_CONTENT, PEDAGOGICAL_PRINCIPLES } from './constants';
 import DaySelector from './components/DaySelector';
 import LiveVoiceSession from './components/LiveVoiceSession';
+import SubscriptionBadge from './components/SubscriptionBadge';
 
 const App: React.FC = () => {
   const { isSignedIn, isLoaded, user } = useUser();
@@ -24,11 +23,12 @@ const App: React.FC = () => {
     const savedText = localStorage.getItem('inner_voice_lesson_text');
     if (savedText) setLessonText(savedText);
   }, []);
+
   useEffect(() => {
-  if (user?.publicMetadata?.subscription) {
-    setSubscription(user.publicMetadata.subscription as Subscription);
-  }
-}, [user]);
+    if (user?.publicMetadata?.subscription) {
+      setSubscription(user.publicMetadata.subscription as Subscription);
+    }
+  }, [user]);
 
   const handleSaveText = () => {
     setLessonText(tempText);
@@ -177,7 +177,12 @@ const App: React.FC = () => {
                 Direção Perceptiva
               </h2>
               <h3 className="text-4xl font-black text-white leading-tight italic tracking-tight">Sua voz interna organiza sua fala.</h3>
-              <p className="text-slate-500 mt-4 font-medium max-w-lg">Aluno: <span className="text-indigo-400 font-black">{user?.firstName || user?.emailAddresses[0]?.emailAddress}</span></p>
+              <div className="mt-4 space-y-3">
+                <p className="text-slate-500 font-medium">
+                  Aluno: <span className="text-indigo-400 font-black">{user?.firstName || user?.emailAddresses[0]?.emailAddress}</span>
+                </p>
+                <SubscriptionBadge subscription={subscription} />
+              </div>
             </div>
             <DaySelector currentDay={currentDay} onSelect={setCurrentDay} />
           </div>
