@@ -35,6 +35,29 @@ const App: React.FC = () => {
 
   const currentMethod = METHODOLOGY.find((m) => m.day === currentDay)!;
 
+  // Configuração do Clerk (escuro)
+  const clerkAppearance = {
+    elements: {
+      rootBox: "w-full",
+      card: "shadow-none bg-transparent",
+      headerTitle: "text-white font-black text-xl",
+      headerSubtitle: "text-slate-400",
+      formFieldInput: "bg-slate-950 border-slate-700 text-white placeholder:text-slate-600",
+      formFieldLabel: "text-slate-300 font-bold text-xs uppercase tracking-wider",
+      formButtonPrimary: "bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-900/30",
+      socialButtonsBlockButton: "bg-slate-800 border-slate-700 text-white hover:bg-slate-700",
+      socialButtonsBlockButtonText: "text-white font-semibold",
+      footerActionLink: "text-indigo-400 hover:text-indigo-300 font-bold",
+      dividerLine: "bg-slate-700",
+      dividerText: "text-slate-500",
+      formFieldInputShowPasswordButton: "text-slate-400 hover:text-white",
+      identityPreviewText: "text-slate-300",
+      identityPreviewEditButton: "text-indigo-400 hover:text-indigo-300",
+      formResendCodeLink: "text-indigo-400 hover:text-indigo-300",
+      otpCodeFieldInput: "bg-slate-950 border-slate-700 text-white"
+    }
+  };
+
   // Loading state
   if (!isLoaded) {
     return (
@@ -47,7 +70,7 @@ const App: React.FC = () => {
     );
   }
 
-  // Auth screen - Mantendo seu estilo escuro!
+  // Auth screen
   if (!isSignedIn) {
     return (
       <div className="min-h-screen bg-[#020617] flex items-center justify-center p-6">
@@ -65,43 +88,8 @@ const App: React.FC = () => {
               <SignIn 
                 routing="hash"
                 afterSignInUrl="/"
-               appearance={{
-  elements: {
-    rootBox: "w-full",
-    card: "shadow-none bg-transparent",
-    
-    // Headers
-    headerTitle: "text-white font-black text-xl",
-    headerSubtitle: "text-slate-400",
-    
-    // Inputs
-    formFieldInput: "bg-slate-950 border-slate-700 text-white placeholder:text-slate-600",
-    formFieldLabel: "text-slate-300 font-bold text-xs uppercase tracking-wider",
-    
-    // Buttons
-    formButtonPrimary: "bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-900/30",
-    
-    // Social buttons
-    socialButtonsBlockButton: "bg-slate-800 border-slate-700 text-white hover:bg-slate-700",
-    socialButtonsBlockButtonText: "text-white font-semibold",
-    
-    // Links
-    footerActionLink: "text-indigo-400 hover:text-indigo-300 font-bold",
-    
-    // Divider
-    dividerLine: "bg-slate-700",
-    dividerText: "text-slate-500",
-    
-    // Form container
-    formFieldRow: "gap-4",
-    
-    // Error messages
-    formFieldInputShowPasswordButton: "text-slate-400 hover:text-white",
-    
-    // Card
-    cardBox: "bg-slate-900/60 border border-slate-800 rounded-3xl shadow-2xl p-8"
-  }
-}}
+                appearance={clerkAppearance}
+              />
               <button 
                 onClick={() => setShowAuthModal('signup')}
                 className="w-full mt-6 text-sm text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-widest transition-colors"
@@ -116,43 +104,8 @@ const App: React.FC = () => {
               <SignUp 
                 routing="hash"
                 afterSignUpUrl="/"
-               appearance={{
-  elements: {
-    rootBox: "w-full",
-    card: "shadow-none bg-transparent",
-    
-    // Headers
-    headerTitle: "text-white font-black text-xl",
-    headerSubtitle: "text-slate-400",
-    
-    // Inputs
-    formFieldInput: "bg-slate-950 border-slate-700 text-white placeholder:text-slate-600",
-    formFieldLabel: "text-slate-300 font-bold text-xs uppercase tracking-wider",
-    
-    // Buttons
-    formButtonPrimary: "bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-900/30",
-    
-    // Social buttons
-    socialButtonsBlockButton: "bg-slate-800 border-slate-700 text-white hover:bg-slate-700",
-    socialButtonsBlockButtonText: "text-white font-semibold",
-    
-    // Links
-    footerActionLink: "text-indigo-400 hover:text-indigo-300 font-bold",
-    
-    // Divider
-    dividerLine: "bg-slate-700",
-    dividerText: "text-slate-500",
-    
-    // Form container
-    formFieldRow: "gap-4",
-    
-    // Error messages
-    formFieldInputShowPasswordButton: "text-slate-400 hover:text-white",
-    
-    // Card
-    cardBox: "bg-slate-900/60 border border-slate-800 rounded-3xl shadow-2xl p-8"
-  }
-}}
+                appearance={clerkAppearance}
+              />
               <button 
                 onClick={() => setShowAuthModal('signin')}
                 className="w-full mt-6 text-sm text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-widest transition-colors"
