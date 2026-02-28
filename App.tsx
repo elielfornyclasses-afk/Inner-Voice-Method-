@@ -67,8 +67,93 @@ const App: React.FC = () => {
 
   const currentMethod = METHODOLOGY.find((m) => m.day === currentDay)!;
 
-  if (!isAuthenticated) {
-    return <AccessControl onAccessGranted={handleAccessGranted} onLogout={handleLogout} />;
+  // Loading state
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-600 font-medium">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Auth modal
+  if (!isSignedIn) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center p-6">
+        <div className="max-w-md w-full">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-black text-2xl mx-auto mb-4 shadow-lg">
+              V
+            </div>
+            <h1 className="text-3xl font-black text-slate-900 mb-2">Inner Voice Method</h1>
+            <p className="text-slate-600">Entre para continuar praticando</p>
+          </div>
+          
+          {showAuthModal === 'signin' && (
+            <div className="bg-white rounded-3xl shadow-xl p-8">
+              <SignIn 
+                routing="hash"
+                afterSignInUrl="/"
+                appearance={{
+                  elements: {
+                    rootBox: "w-full",
+                    card: "shadow-none"
+                  }
+                }}
+              />
+              <button 
+                onClick={() => setShowAuthModal('signup')}
+                className="w-full mt-4 text-sm text-indigo-600 hover:text-indigo-700 font-semibold"
+              >
+                Não tem conta? Criar conta
+              </button>
+            </div>
+          )}
+          
+          {showAuthModal === 'signup' && (
+            <div className="bg-white rounded-3xl shadow-xl p-8">
+              <SignUp 
+                routing="hash"
+                afterSignUpUrl="/"
+                appearance={{
+                  elements: {
+                    rootBox: "w-full",
+                    card: "shadow-none"
+                  }
+                }}
+              />
+              <button 
+                onClick={() => setShowAuthModal('signin')}
+                className="w-full mt-4 text-sm text-indigo-600 hover:text-indigo-700 font-semibold"
+              >
+                Já tem conta? Entrar
+              </button>
+            </div>
+          )}
+          
+          {!showAuthModal && (
+            <div className="space-y-4">
+              <button
+                onClick={() => setShowAuthModal('signin')}
+                className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-indigo-700 transition-all shadow-lg hover:shadow-xl"
+              >
+                Entrar
+              </button>
+              <button
+                onClick={() => setShowAuthModal('signup')}
+                className="w-full bg-white text-indigo-600 py-4 rounded-2xl font-bold text-lg hover:bg-gray-50 transition-all border-2 border-indigo-600"
+              >
+                Criar Conta
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
   }
 
   return (
@@ -83,8 +168,16 @@ const App: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <UserButton 
+              afterSignOutUrl="/"
+              appearance={{
+                elements: {
+                  avatarBox: "w-10 h-10"
+                }
+              }}
+            />
             <button 
-              onClick={handleLogout}
+              onClick={() => signOut()}
               className="text-[10px] font-bold text-red-400/70 px-4 py-2 hover:bg-red-950/30 rounded-lg transition-colors uppercase tracking-widest"
             >
               Sair
