@@ -65,19 +65,43 @@ const App: React.FC = () => {
               <SignIn 
                 routing="hash"
                 afterSignInUrl="/"
-                appearance={{
-                  elements: {
-                    rootBox: "w-full",
-                    card: "shadow-none bg-transparent",
-                    headerTitle: "text-white",
-                    headerSubtitle: "text-slate-400",
-                    socialButtonsBlockButton: "bg-slate-800 border-slate-700 text-white hover:bg-slate-700",
-                    formButtonPrimary: "bg-indigo-600 hover:bg-indigo-500",
-                    formFieldInput: "bg-slate-950 border-slate-800 text-white",
-                    footerActionLink: "text-indigo-400 hover:text-indigo-300"
-                  }
-                }}
-              />
+               appearance={{
+  elements: {
+    rootBox: "w-full",
+    card: "shadow-none bg-transparent",
+    
+    // Headers
+    headerTitle: "text-white font-black text-xl",
+    headerSubtitle: "text-slate-400",
+    
+    // Inputs
+    formFieldInput: "bg-slate-950 border-slate-700 text-white placeholder:text-slate-600",
+    formFieldLabel: "text-slate-300 font-bold text-xs uppercase tracking-wider",
+    
+    // Buttons
+    formButtonPrimary: "bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-900/30",
+    
+    // Social buttons
+    socialButtonsBlockButton: "bg-slate-800 border-slate-700 text-white hover:bg-slate-700",
+    socialButtonsBlockButtonText: "text-white font-semibold",
+    
+    // Links
+    footerActionLink: "text-indigo-400 hover:text-indigo-300 font-bold",
+    
+    // Divider
+    dividerLine: "bg-slate-700",
+    dividerText: "text-slate-500",
+    
+    // Form container
+    formFieldRow: "gap-4",
+    
+    // Error messages
+    formFieldInputShowPasswordButton: "text-slate-400 hover:text-white",
+    
+    // Card
+    cardBox: "bg-slate-900/60 border border-slate-800 rounded-3xl shadow-2xl p-8"
+  }
+}}
               <button 
                 onClick={() => setShowAuthModal('signup')}
                 className="w-full mt-6 text-sm text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-widest transition-colors"
@@ -92,19 +116,43 @@ const App: React.FC = () => {
               <SignUp 
                 routing="hash"
                 afterSignUpUrl="/"
-                appearance={{
-                  elements: {
-                    rootBox: "w-full",
-                    card: "shadow-none bg-transparent",
-                    headerTitle: "text-white",
-                    headerSubtitle: "text-slate-400",
-                    socialButtonsBlockButton: "bg-slate-800 border-slate-700 text-white hover:bg-slate-700",
-                    formButtonPrimary: "bg-indigo-600 hover:bg-indigo-500",
-                    formFieldInput: "bg-slate-950 border-slate-800 text-white",
-                    footerActionLink: "text-indigo-400 hover:text-indigo-300"
-                  }
-                }}
-              />
+               appearance={{
+  elements: {
+    rootBox: "w-full",
+    card: "shadow-none bg-transparent",
+    
+    // Headers
+    headerTitle: "text-white font-black text-xl",
+    headerSubtitle: "text-slate-400",
+    
+    // Inputs
+    formFieldInput: "bg-slate-950 border-slate-700 text-white placeholder:text-slate-600",
+    formFieldLabel: "text-slate-300 font-bold text-xs uppercase tracking-wider",
+    
+    // Buttons
+    formButtonPrimary: "bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-900/30",
+    
+    // Social buttons
+    socialButtonsBlockButton: "bg-slate-800 border-slate-700 text-white hover:bg-slate-700",
+    socialButtonsBlockButtonText: "text-white font-semibold",
+    
+    // Links
+    footerActionLink: "text-indigo-400 hover:text-indigo-300 font-bold",
+    
+    // Divider
+    dividerLine: "bg-slate-700",
+    dividerText: "text-slate-500",
+    
+    // Form container
+    formFieldRow: "gap-4",
+    
+    // Error messages
+    formFieldInputShowPasswordButton: "text-slate-400 hover:text-white",
+    
+    // Card
+    cardBox: "bg-slate-900/60 border border-slate-800 rounded-3xl shadow-2xl p-8"
+  }
+}}
               <button 
                 onClick={() => setShowAuthModal('signin')}
                 className="w-full mt-6 text-sm text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-widest transition-colors"
