@@ -1,3 +1,5 @@
+import { Subscription } from './types';
+import SubscriptionBadge from './components/SubscriptionBadge';
 import React, { useState, useEffect } from 'react';
 import { SignIn, SignUp, UserButton, useUser, useAuth } from '@clerk/clerk-react';
 import { DayOfWeek } from './types';
