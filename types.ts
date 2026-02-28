@@ -34,3 +34,14 @@ export interface AccessCode {
   description: string;
   isActive: boolean;
 }
+
+// Tipos de assinatura
+export type SubscriptionPlan = 'free' | 'premium' | 'pro';
+export type SubscriptionStatus = 'active' | 'expired' | 'cancelled';
+
+export interface Subscription {
+  plan: SubscriptionPlan;
+  status: SubscriptionStatus;
+  expiresAt: number | null;
+  startedAt: number;
+}
