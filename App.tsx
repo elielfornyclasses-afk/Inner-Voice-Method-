@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { DayOfWeek, AccessCode } from './types';
+import { SignIn, SignUp, UserButton, useUser, useAuth } from '@clerk/clerk-react';
+import { DayOfWeek } from './types';
 import { METHODOLOGY, DEFAULT_LESSON_CONTENT, PEDAGOGICAL_PRINCIPLES } from './constants';
 import DaySelector from './components/DaySelector';
 import LiveVoiceSession from './components/LiveVoiceSession';
-import AccessControl from './components/AccessControl';
 
 const App: React.FC = () => {
   const [currentDay, setCurrentDay] = useState<DayOfWeek>(DayOfWeek.MONDAY);
