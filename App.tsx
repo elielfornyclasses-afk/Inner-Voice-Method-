@@ -18,11 +18,17 @@ const App: React.FC = () => {
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [tempText, setTempText] = useState<string>('');
   const [showAuthModal, setShowAuthModal] = useState<'signin' | 'signup' | null>(null);
+  const [subscription, setSubscription] = useState<Subscription | undefined>(undefined);
 
   useEffect(() => {
     const savedText = localStorage.getItem('inner_voice_lesson_text');
     if (savedText) setLessonText(savedText);
   }, []);
+  useEffect(() => {
+  if (user?.publicMetadata?.subscription) {
+    setSubscription(user.publicMetadata.subscription as Subscription);
+  }
+}, [user]);
 
   const handleSaveText = () => {
     setLessonText(tempText);
