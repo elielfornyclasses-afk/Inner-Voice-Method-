@@ -11,7 +11,7 @@ import { markInviteAsUsed } from './services/invites';
 
 // Lista de emails admin (TROQUE pelo seu email!)
 const ADMIN_EMAILS = [
-  'seuemail@gmail.com', // ← TROQUE AQUI!
+  'elielfornyclasses@gmail.com', // ← TROQUE AQUI!
 ];
 
 // Função pra verificar se é admin
