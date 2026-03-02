@@ -34,12 +34,62 @@ const App: React.FC = () => {
   }, [user]);
 
   // Quando usuário criar conta com sucesso, ativa assinatura
-  useEffect(() => {
-    const activateSubscription = async () => {
-      if (isSignedIn && user && validatedInvite && !user.publicMetadata?.subscription) {
-        try {
-          const now = Date.now();
-          const expiresAt = now + (validatedInvite.validityDays * 24 * 60 * 60 * 1000);
+useEffect(() => {
+  const activateSubscription = async () => {
+    console.log('🔍 Verificando ativação...', {
+      isSignedIn,
+      hasUser: !!user,
+      hasValidatedInvite: !!validatedInvite,
+      hasSubscription: !!user?.publicMetadata?.subscription
+    });
+
+    if (isSignedIn && user && validatedInvite && !user.publicMetadata?.subscription) {
+      try {
+        console.log('✅ Iniciando ativação de assinatura...', validatedInvite);
+        
+        const now = Date.now();
+        const expiresAt = now + (validatedInvite.validityDays * 24 * 60 * 60 * 1000);
+        
+        const subscriptionData = {
+          plan: validatedInvite.plan,
+          status: 'active' as const,
+          expiresAt,
+          startedAt: now
+        };
+
+        console.log('📝 Dados da assinatura:', subscriptionData);
+        
+        // Atualiza metadata do usuário no Clerk
+        console.log('🔄 Atualizando Clerk...');
+        await user.update({
+          publicMetadata: {
+            subscription: subscriptionData
+          }
+        });
+        console.log('✅ Clerk atualizado!');
+
+        // Marca convite como usado
+        console.log('🔄 Marcando convite como usado...');
+        const marked = await markInviteAsUsed(
+          validatedInvite.code, 
+          user.emailAddresses[0]?.emailAddress || ''
+        );
+        console.log('✅ Convite marcado:', marked);
+
+        // Atualiza estado local
+        setSubscription(subscriptionData);
+        console.log('✅ Estado local atualizado!');
+
+        setValidatedInvite(null);
+        console.log('🎉 Ativação completa!');
+      } catch (error) {
+        console.error('❌ Erro ao ativar assinatura:', error);
+      }
+    }
+  };
+
+  activateSubscription();
+}, [isSignedIn, user, validatedInvite]);
           
           // Atualiza metadata do usuário no Clerk
           await user.update({
