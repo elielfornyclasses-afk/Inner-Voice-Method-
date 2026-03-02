@@ -170,7 +170,7 @@ if (isSignedIn && subscription) {
             
             <div className="space-y-3">
               
-                href="https://wa.me/seu-numero-aqui?text=Olá!%20Gostaria%20de%20renovar%20minha%20assinatura"
+                href="https://wa.me/5521993406428?text=Olá!%20Gostaria%20de%20renovar%20minha%20assinatura"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block w-full bg-green-600 text-white py-4 rounded-2xl font-black text-lg hover:bg-green-500 transition-all shadow-2xl shadow-green-950/40 uppercase tracking-wider"
