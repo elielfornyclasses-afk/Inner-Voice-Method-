@@ -13,7 +13,12 @@ interface ClerkProviderProps {
 
 const ClerkProvider: React.FC<ClerkProviderProps> = ({ children }) => {
   return (
-    <ClerkReactProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+    <ClerkReactProvider 
+      publishableKey={CLERK_PUBLISHABLE_KEY}
+      navigate={(to) => window.history.pushState({}, '', to)}
+      afterSignInUrl="/"
+      afterSignUpUrl="/"
+    >
       {children}
     </ClerkReactProvider>
   );
