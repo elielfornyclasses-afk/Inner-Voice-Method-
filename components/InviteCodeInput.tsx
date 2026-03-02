@@ -83,7 +83,7 @@ const InviteCodeInput: React.FC<InviteCodeInputProps> = ({ onValidCode }) => {
         <p className="text-slate-500 text-xs text-center">
           Não tem um código?{' '}
           <a
-            href="https://wa.me/5522999999999?text=Olá!%20Gostaria%20de%20obter%20um%20código%20de%20acesso"
+            href="https://wa.me/5521993406428?text=Olá!%20Gostaria%20de%20obter%20um%20código%20de%20acesso"
             target="_blank"
             rel="noopener noreferrer"
             className="text-indigo-400 hover:text-indigo-300 font-bold"
