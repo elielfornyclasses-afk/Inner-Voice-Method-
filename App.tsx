@@ -143,6 +143,58 @@ const App: React.FC = () => {
       </div>
     );
   }
+  // Bloqueio por assinatura expirada
+if (isSignedIn && subscription) {
+  const isExpired = subscription.status === 'expired' || 
+                   (subscription.expiresAt && subscription.expiresAt < Date.now());
+  
+  if (isExpired) {
+    return (
+      <div className="min-h-screen bg-[#020617] flex items-center justify-center p-6">
+        <div className="max-w-md w-full text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <div className="bg-slate-900/50 rounded-3xl border border-slate-800 shadow-2xl p-10">
+            <div className="w-20 h-20 bg-red-900/30 border-2 border-red-500/30 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-10 h-10 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            
+            <h2 className="text-2xl font-black text-white mb-3 italic">Assinatura Expirada</h2>
+            <p className="text-slate-400 mb-8 leading-relaxed">
+              Sua assinatura expirou em{' '}
+              <span className="text-red-400 font-bold">
+                {new Date(subscription.expiresAt!).toLocaleDateString('pt-BR')}
+              </span>
+              . Entre em contato para renovar e continuar praticando!
+            </p>
+            
+            <div className="space-y-3">
+              
+                href="https://wa.me/seu-numero-aqui?text=Olá!%20Gostaria%20de%20renovar%20minha%20assinatura"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full bg-green-600 text-white py-4 rounded-2xl font-black text-lg hover:bg-green-500 transition-all shadow-2xl shadow-green-950/40 uppercase tracking-wider"
+              >
+                💬 Falar no WhatsApp
+              </a>
+              
+              <button
+                onClick={() => signOut()}
+                className="block w-full bg-slate-800 text-slate-400 py-3 rounded-2xl font-bold text-sm hover:bg-slate-700 transition-all uppercase tracking-wider"
+              >
+                Sair
+              </button>
+            </div>
+          </div>
+          
+          <p className="text-slate-600 text-xs mt-6 uppercase tracking-widest">
+            Inner Voice Method • Trainer Professional
+          </p>
+        </div>
+      </div>
+    );
+  }
+}
 
   return (
     <div className="min-h-screen bg-[#020617] flex flex-col font-sans selection:bg-indigo-500/30 selection:text-indigo-200">
