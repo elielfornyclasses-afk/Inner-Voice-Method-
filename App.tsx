@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { SignIn, SignUp, UserButton, useUser, useAuth } from '@clerk/clerk-react';
-import { DayOfWeek, Subscription } from './types';
+import { DayOfWeek, Subscription, InviteCode } from './types';
 import { METHODOLOGY, DEFAULT_LESSON_CONTENT, PEDAGOGICAL_PRINCIPLES } from './constants';
 import DaySelector from './components/DaySelector';
 import LiveVoiceSession from './components/LiveVoiceSession';
 import SubscriptionBadge from './components/SubscriptionBadge';
+import InviteCodeInput from './components/InviteCodeInput';
+import { markInviteAsUsed } from './services/invites';
 
 const App: React.FC = () => {
   const { isSignedIn, isLoaded, user } = useUser();
@@ -16,8 +18,9 @@ const App: React.FC = () => {
   const [lessonText, setLessonText] = useState<string>(DEFAULT_LESSON_CONTENT);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [tempText, setTempText] = useState<string>('');
-  const [showAuthModal, setShowAuthModal] = useState<'signin' | 'signup' | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState<'signin' | 'signup' | 'invite' | null>(null);
   const [subscription, setSubscription] = useState<Subscription | undefined>(undefined);
+  const [validatedInvite, setValidatedInvite] = useState<InviteCode | null>(null);
 
   useEffect(() => {
     const savedText = localStorage.getItem('inner_voice_lesson_text');
@@ -30,6 +33,47 @@ const App: React.FC = () => {
     }
   }, [user]);
 
+  // Quando usuário criar conta com sucesso, ativa assinatura
+  useEffect(() => {
+    const activateSubscription = async () => {
+      if (isSignedIn && user && validatedInvite && !user.publicMetadata?.subscription) {
+        try {
+          const now = Date.now();
+          const expiresAt = now + (validatedInvite.validityDays * 24 * 60 * 60 * 1000);
+          
+          // Atualiza metadata do usuário no Clerk
+          await user.update({
+            publicMetadata: {
+              subscription: {
+                plan: validatedInvite.plan,
+                status: 'active',
+                expiresAt,
+                startedAt: now
+              }
+            }
+          });
+
+          // Marca convite como usado
+          await markInviteAsUsed(validatedInvite.code, user.emailAddresses[0]?.emailAddress || '');
+
+          // Atualiza estado local
+          setSubscription({
+            plan: validatedInvite.plan,
+            status: 'active',
+            expiresAt,
+            startedAt: now
+          });
+
+          setValidatedInvite(null);
+        } catch (error) {
+          console.error('Erro ao ativar assinatura:', error);
+        }
+      }
+    };
+
+    activateSubscription();
+  }, [isSignedIn, user, validatedInvite]);
+
   const handleSaveText = () => {
     setLessonText(tempText);
     localStorage.setItem('inner_voice_lesson_text', tempText);
@@ -39,6 +83,11 @@ const App: React.FC = () => {
   const handleStartEdit = () => {
     setTempText(lessonText);
     setIsEditing(true);
+  };
+
+  const handleValidCode = (invite: InviteCode) => {
+    setValidatedInvite(invite);
+    setShowAuthModal('signup');
   };
 
   const currentMethod = METHODOLOGY.find((m) => m.day === currentDay)!;
@@ -99,7 +148,7 @@ const App: React.FC = () => {
                 appearance={clerkAppearance}
               />
               <button 
-                onClick={() => setShowAuthModal('signup')}
+                onClick={() => setShowAuthModal('invite')}
                 className="w-full mt-6 text-sm text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-widest transition-colors"
               >
                 Não tem conta? Criar conta
@@ -107,19 +156,42 @@ const App: React.FC = () => {
             </div>
           )}
           
-          {showAuthModal === 'signup' && (
-            <div className="bg-slate-900/50 rounded-3xl border border-slate-800 shadow-2xl p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <SignUp 
-                routing="hash"
-                afterSignUpUrl="/"
-                appearance={clerkAppearance}
-              />
-              <button 
-                onClick={() => setShowAuthModal('signin')}
-                className="w-full mt-6 text-sm text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-widest transition-colors"
-              >
-                Já tem conta? Entrar
-              </button>
+          {showAuthModal === 'invite' && (
+            <InviteCodeInput onValidCode={handleValidCode} />
+          )}
+          
+          {showAuthModal === 'signup' && validatedInvite && (
+            <div className="space-y-4">
+              <div className="bg-green-900/30 border border-green-500/30 rounded-2xl p-4 animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center gap-3">
+                  <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div className="flex-1">
+                    <p className="text-green-300 font-bold text-sm">Código validado!</p>
+                    <p className="text-green-400/80 text-xs mt-0.5">
+                      Plano {validatedInvite.plan} • {validatedInvite.validityDays} dias
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-900/50 rounded-3xl border border-slate-800 shadow-2xl p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <SignUp 
+                  routing="hash"
+                  afterSignUpUrl="/"
+                  appearance={clerkAppearance}
+                />
+                <button 
+                  onClick={() => {
+                    setShowAuthModal('signin');
+                    setValidatedInvite(null);
+                  }}
+                  className="w-full mt-6 text-sm text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-widest transition-colors"
+                >
+                  Já tem conta? Entrar
+                </button>
+              </div>
             </div>
           )}
           
@@ -132,7 +204,7 @@ const App: React.FC = () => {
                 Entrar
               </button>
               <button
-                onClick={() => setShowAuthModal('signup')}
+                onClick={() => setShowAuthModal('invite')}
                 className="w-full bg-slate-900 text-indigo-400 py-5 rounded-2xl font-black text-lg hover:bg-slate-800 transition-all border-2 border-slate-800 uppercase tracking-wider"
               >
                 Criar Conta
@@ -171,7 +243,7 @@ const App: React.FC = () => {
               
               <div className="space-y-3">
                 <a
-                  href="https://wa.me/5521993406428?text=Olá!%20Gostaria%20de%20renovar%20minha%20assinatura"
+                  href="https://wa.me/5522999999999?text=Olá!%20Gostaria%20de%20renovar%20minha%20assinatura"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block w-full bg-green-600 text-white py-4 rounded-2xl font-black text-lg hover:bg-green-500 transition-all shadow-2xl shadow-green-950/40 uppercase tracking-wider"
