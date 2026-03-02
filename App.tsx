@@ -6,11 +6,12 @@ import DaySelector from './components/DaySelector';
 import LiveVoiceSession from './components/LiveVoiceSession';
 import SubscriptionBadge from './components/SubscriptionBadge';
 import InviteCodeInput from './components/InviteCodeInput';
+import AdminPanel from './components/AdminPanel';
 import { markInviteAsUsed } from './services/invites';
 
 // Lista de emails admin (TROQUE pelo seu email!)
 const ADMIN_EMAILS = [
-  'elielfornyclasses@gmail.com', // ← TROQUE AQUI!
+  'seuemail@gmail.com', // ← TROQUE AQUI!
 ];
 
 // Função pra verificar se é admin
@@ -32,6 +33,7 @@ const App: React.FC = () => {
   const [showAuthModal, setShowAuthModal] = useState<'signin' | 'signup' | 'invite' | null>(null);
   const [subscription, setSubscription] = useState<Subscription | undefined>(undefined);
   const [validatedInvite, setValidatedInvite] = useState<InviteCode | null>(null);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
 
   useEffect(() => {
     const savedText = localStorage.getItem('inner_voice_lesson_text');
@@ -44,90 +46,70 @@ const App: React.FC = () => {
     }
   }, [user]);
 
-  // Quando usuário criar conta com sucesso, ativa assinatura
-useEffect(() => {
-  const activateSubscription = async () => {
-    console.log('🔍 Verificando ativação...', {
-      isSignedIn,
-      hasUser: !!user,
-      hasValidatedInvite: !!validatedInvite,
-      hasSubscription: !!user?.publicMetadata?.subscription
-    });
-
-    if (isSignedIn && user && validatedInvite && !user.publicMetadata?.subscription) {
-      try {
-        console.log('✅ Iniciando ativação de assinatura...', validatedInvite);
-        
-        const now = Date.now();
-        const expiresAt = now + (validatedInvite.validityDays * 24 * 60 * 60 * 1000);
-        
-        const subscriptionData = {
-          plan: validatedInvite.plan,
-          status: 'active' as const,
-          expiresAt,
-          startedAt: now
-        };
-
-        console.log('📝 Dados da assinatura:', subscriptionData);
-        
-        // Atualiza metadata do usuário no Clerk
-        console.log('🔄 Atualizando Clerk...');
-        await user.update({
-          publicMetadata: {
-            subscription: subscriptionData
-          }
-        });
-        console.log('✅ Clerk atualizado!');
-
-        // Marca convite como usado
-        console.log('🔄 Marcando convite como usado...');
-        const marked = await markInviteAsUsed(
-          validatedInvite.code, 
-          user.emailAddresses[0]?.emailAddress || ''
-        );
-        console.log('✅ Convite marcado:', marked);
-
-        // Atualiza estado local
-        setSubscription(subscriptionData);
-        console.log('✅ Estado local atualizado!');
-
-        setValidatedInvite(null);
-        console.log('🎉 Ativação completa!');
-      } catch (error) {
-        console.error('❌ Erro ao ativar assinatura:', error);
+  // Detecta se deve mostrar painel admin pela URL
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (path === '/admin' && isSignedIn && user) {
+      const userEmail = user.emailAddresses[0]?.emailAddress;
+      if (isAdmin(userEmail)) {
+        setShowAdminPanel(true);
+      } else {
+        window.location.href = '/';
       }
     }
-  };
+  }, [isSignedIn, user]);
 
-  activateSubscription();
-}, [isSignedIn, user, validatedInvite]);
+  // Quando usuário criar conta com sucesso, ativa assinatura
+  useEffect(() => {
+    const activateSubscription = async () => {
+      console.log('🔍 Verificando ativação...', {
+        isSignedIn,
+        hasUser: !!user,
+        hasValidatedInvite: !!validatedInvite,
+        hasSubscription: !!user?.publicMetadata?.subscription
+      });
+
+      if (isSignedIn && user && validatedInvite && !user.publicMetadata?.subscription) {
+        try {
+          console.log('✅ Iniciando ativação de assinatura...', validatedInvite);
           
-          // Atualiza metadata do usuário no Clerk
-          await user.update({
-            publicMetadata: {
-              subscription: {
-                plan: validatedInvite.plan,
-                status: 'active',
-                expiresAt,
-                startedAt: now
-              }
-            }
-          });
-
-          // Marca convite como usado
-          await markInviteAsUsed(validatedInvite.code, user.emailAddresses[0]?.emailAddress || '');
-
-          // Atualiza estado local
-          setSubscription({
+          const now = Date.now();
+          const expiresAt = now + (validatedInvite.validityDays * 24 * 60 * 60 * 1000);
+          
+          const subscriptionData = {
             plan: validatedInvite.plan,
-            status: 'active',
+            status: 'active' as const,
             expiresAt,
             startedAt: now
+          };
+
+          console.log('📝 Dados da assinatura:', subscriptionData);
+          
+          // Atualiza metadata do usuário no Clerk
+          console.log('🔄 Atualizando Clerk...');
+          await user.update({
+            publicMetadata: {
+              subscription: subscriptionData
+            }
           });
+          console.log('✅ Clerk atualizado!');
+
+          // Marca convite como usado
+          console.log('🔄 Marcando convite como usado...');
+          const marked = await markInviteAsUsed(
+            validatedInvite.code, 
+            user.emailAddresses[0]?.emailAddress || ''
+          );
+          console.log('✅ Convite marcado:', marked);
+
+          // Atualiza estado local
+          setSubscription(subscriptionData);
+          console.log('✅ Estado local atualizado!');
 
           setValidatedInvite(null);
+          console.log('🎉 Ativação completa!');
         } catch (error) {
-          console.error('Erro ao ativar assinatura:', error);
+          console.error('❌ Erro ao ativar assinatura:', error);
         }
       }
     };
@@ -184,6 +166,34 @@ useEffect(() => {
           <div className="w-16 h-16 border-4 border-slate-800 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-slate-500 font-medium">Carregando...</p>
         </div>
+      </div>
+    );
+  }
+
+  // Painel Admin
+  if (showAdminPanel && isSignedIn && isAdmin(user?.emailAddresses[0]?.emailAddress)) {
+    return (
+      <div>
+        <header className="bg-slate-950/80 border-b border-slate-900 sticky top-0 z-50 backdrop-blur-md">
+          <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => {
+                  setShowAdminPanel(false);
+                  window.history.pushState({}, '', '/');
+                }}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+              </button>
+              <h1 className="text-sm font-black tracking-wide text-white uppercase">Painel Admin</h1>
+            </div>
+            <UserButton afterSignOutUrl="/" />
+          </div>
+        </header>
+        <AdminPanel />
       </div>
     );
   }
@@ -342,6 +352,17 @@ useEffect(() => {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            {isAdmin(user?.emailAddresses[0]?.emailAddress) && (
+              <button
+                onClick={() => {
+                  setShowAdminPanel(true);
+                  window.history.pushState({}, '', '/admin');
+                }}
+                className="text-[10px] font-bold bg-purple-900/30 text-purple-400 px-4 py-2 rounded-lg hover:bg-purple-800/30 transition-colors uppercase tracking-widest border border-purple-500/30"
+              >
+                🎛️ Admin
+              </button>
+            )}
             <UserButton 
               afterSignOutUrl="/"
               appearance={{
