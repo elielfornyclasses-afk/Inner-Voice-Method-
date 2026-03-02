@@ -340,6 +340,44 @@ const App: React.FC = () => {
     }
   }
 
+ // Bloqueia usuários sem assinatura (entrou sem convite)
+if (isSignedIn && !subscription) {
+  return (
+    <div className="min-h-screen bg-[#020617] flex items-center justify-center p-6">
+      <div className="max-w-md w-full text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="bg-slate-900/50 rounded-3xl border border-slate-800 shadow-2xl p-10">
+          <div className="w-20 h-20 bg-yellow-900/30 border-2 border-yellow-500/30 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg className="w-10 h-10 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            </svg>
+          </div>
+
+          <h2 className="text-2xl font-black text-white mb-3 italic">Acesso Restrito</h2>
+          <p className="text-slate-400 mb-8 leading-relaxed">
+            Você precisa de um código de convite para acessar o app. Entre em contato com seu instrutor!
+          </p>
+
+          <div className="space-y-3">
+            
+              href="https://wa.me/5521993406428?text=Olá!%20Gostaria%20de%20obter%20um%20código%20de%20acesso"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full bg-green-600 text-white py-4 rounded-2xl font-black text-lg hover:bg-green-500 transition-all shadow-2xl shadow-green-950/40 uppercase tracking-wider"
+            >
+              💬 Falar no WhatsApp
+            </a>
+            <button
+              onClick={() => signOut()}
+              className="block w-full bg-slate-800 text-slate-400 py-3 rounded-2xl font-bold text-sm hover:bg-slate-700 transition-all uppercase tracking-wider"
+            >
+              Sair
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
   return (
     <div className="min-h-screen bg-[#020617] flex flex-col font-sans selection:bg-indigo-500/30 selection:text-indigo-200">
       <header className="bg-slate-950/80 border-b border-slate-900 sticky top-0 z-50 backdrop-blur-md">
