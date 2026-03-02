@@ -214,7 +214,7 @@ const App: React.FC = () => {
           {showAuthModal === 'signin' && (
             <div className="bg-slate-900/50 rounded-3xl border border-slate-800 shadow-2xl p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <SignIn 
-                routing="hash"
+                appearance={clerkAppearance}
                 afterSignInUrl="/"
                 appearance={clerkAppearance}
               />
@@ -249,7 +249,7 @@ const App: React.FC = () => {
 
               <div className="bg-slate-900/50 rounded-3xl border border-slate-800 shadow-2xl p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <SignUp 
-                  routing="hash"
+                  appearance={clerkAppearance}
                   afterSignUpUrl="/"
                   appearance={clerkAppearance}
                 />
