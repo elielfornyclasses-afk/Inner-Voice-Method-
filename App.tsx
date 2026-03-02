@@ -8,6 +8,17 @@ import SubscriptionBadge from './components/SubscriptionBadge';
 import InviteCodeInput from './components/InviteCodeInput';
 import { markInviteAsUsed } from './services/invites';
 
+// Lista de emails admin (TROQUE pelo seu email!)
+const ADMIN_EMAILS = [
+  'elielfornyclasses@gmail.com', // ← TROQUE AQUI!
+];
+
+// Função pra verificar se é admin
+const isAdmin = (email?: string) => {
+  if (!email) return false;
+  return ADMIN_EMAILS.includes(email.toLowerCase());
+};
+
 const App: React.FC = () => {
   const { isSignedIn, isLoaded, user } = useUser();
   const { signOut } = useAuth();
