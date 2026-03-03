@@ -28,7 +28,7 @@ const AdminPanel: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>('premium');
-  const [validityDays, setValidityDays] = useState(30);
+  const [validityDays, setValidityDays] = useState<string>('30');
   const [maxUses, setMaxUses] = useState(1);
 
   // — Usuários —
@@ -38,7 +38,7 @@ const AdminPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'users' | 'invites'>('users');
 
   // — Renovação —
-  const [renewDays, setRenewDays] = useState<{ [userId: string]: string }>({});
+  const [renewDays, setRenewDays] = useState<{ [userId: string]: number }>({});
   const [renewPlan, setRenewPlan] = useState<{ [userId: string]: string }>({});
 
   useEffect(() => {
@@ -93,11 +93,13 @@ const AdminPanel: React.FC = () => {
 
   const handleGenerateCode = async () => {
     if (!user?.emailAddresses[0]?.emailAddress) return;
+    const days = Number(validityDays);
+    if (!days || days < 1) { alert('Informe um número de dias válido.'); return; }
     setIsGenerating(true);
     try {
       const invite = await createInviteCode(
         selectedPlan,
-        validityDays,
+        days,
         maxUses,
         user.emailAddresses[0].emailAddress
       );
@@ -248,7 +250,8 @@ const AdminPanel: React.FC = () => {
                   const email = u.email_addresses[0]?.email_address || '';
                   const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || email;
                   const isBlocked = sub?.status === 'blocked';
-                  const userRenewDays = renewDays[u.id] || 30;
+                  const userRenewDaysStr = renewDays[u.id] ?? '30';
+                  const userRenewDaysNum = Number(userRenewDaysStr);
                   const userRenewPlan = renewPlan[u.id] || sub?.plan || 'premium';
 
                   return (
@@ -286,17 +289,18 @@ const AdminPanel: React.FC = () => {
                                 <option value="premium">Premium</option>
                                 <option value="pro">Pro</option>
                               </select>
-                             <input
-  type="number"
-  min={1}
-  placeholder="dias"
-  value={renewDays[u.id] ?? '30'}
-  onChange={(e) => setRenewDays(prev => ({ ...prev, [u.id]: e.target.value }))}
-  className="w-20 bg-slate-800 border border-slate-700 text-white text-xs py-2 px-2 rounded-lg text-center"
-/>
+                              <input
+                                type="number"
+                                min={1}
+                                placeholder="dias"
+                                value={userRenewDaysStr}
+                                onChange={(e) => setRenewDays(prev => ({ ...prev, [u.id]: e.target.value }))}
+                                className="w-16 bg-slate-800 border border-slate-700 text-white text-xs py-2 px-2 rounded-lg text-center"
+                              />
+                              <span className="text-slate-500 text-xs">d</span>
                               <button
                                 disabled={actionLoading === `${u.id}-activate`}
-                                onClick={() => handleUserAction(u.id, 'activate', userRenewPlan, userRenewDays)}
+                                onClick={() => handleUserAction(u.id, 'activate', userRenewPlan, userRenewDaysNum)}
                                 className="px-3 py-2 bg-green-600 text-white text-xs font-black rounded-lg hover:bg-green-500 transition-all disabled:opacity-50 whitespace-nowrap"
                               >
                                 {actionLoading === `${u.id}-activate` ? '...' : '⚡ Ativar'}
@@ -306,21 +310,20 @@ const AdminPanel: React.FC = () => {
 
                           {/* Com plano: renovar */}
                           {sub && !isBlocked && (
-                            <div className="flex gap-2">
-                              <select
-                                value={userRenewDays}
-                                onChange={(e) => setRenewDays(prev => ({ ...prev, [u.id]: Number(e.target.value) }))}
-                                className="flex-1 bg-slate-800 border border-slate-700 text-white text-xs py-2 px-3 rounded-lg"
-                              >
-                                <option value={7}>+7 dias</option>
-                                <option value={14}>+14 dias</option>
-                                <option value={30}>+30 dias</option>
-                                <option value={90}>+90 dias</option>
-                              </select>
+                            <div className="flex gap-2 items-center">
+                              <input
+                                type="number"
+                                min={1}
+                                placeholder="dias"
+                                value={userRenewDaysStr}
+                                onChange={(e) => setRenewDays(prev => ({ ...prev, [u.id]: e.target.value }))}
+                                className="w-20 bg-slate-800 border border-slate-700 text-white text-xs py-2 px-2 rounded-lg text-center"
+                              />
+                              <span className="text-slate-500 text-xs">dias</span>
                               <button
                                 disabled={actionLoading === `${u.id}-renew`}
-                                onClick={() => handleUserAction(u.id, 'renew', userRenewPlan, userRenewDays)}
-                                className="px-3 py-2 bg-indigo-600 text-white text-xs font-black rounded-lg hover:bg-indigo-500 transition-all disabled:opacity-50 whitespace-nowrap"
+                                onClick={() => handleUserAction(u.id, 'renew', userRenewPlan, userRenewDaysNum)}
+                                className="flex-1 px-3 py-2 bg-indigo-600 text-white text-xs font-black rounded-lg hover:bg-indigo-500 transition-all disabled:opacity-50 whitespace-nowrap"
                               >
                                 {actionLoading === `${u.id}-renew` ? '...' : '🔄 Renovar'}
                               </button>
@@ -379,18 +382,26 @@ const AdminPanel: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Validade</label>
-                  <select
+                  <label className="block text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Validade (dias)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    placeholder="Ex: 30"
                     value={validityDays}
-                    onChange={(e) => setValidityDays(Number(e.target.value))}
+                    onChange={(e) => setValidityDays(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 text-white py-3 px-4 rounded-xl font-bold focus:border-purple-500 outline-none"
-                  >
-                    <option value={7}>7 dias</option>
-                    <option value={14}>14 dias</option>
-                    <option value={30}>30 dias</option>
-                    <option value={90}>90 dias</option>
-                    <option value={365}>1 ano</option>
-                  </select>
+                  />
+                  <div className="flex gap-2 mt-2">
+                    {[7, 14, 30, 90, 365].map(d => (
+                      <button
+                        key={d}
+                        onClick={() => setValidityDays(String(d))}
+                        className={`flex-1 py-1 text-xs font-bold rounded-lg transition-all ${validityDays === String(d) ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+                      >
+                        {d === 365 ? '1a' : `${d}d`}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Usos</label>
@@ -483,7 +494,7 @@ const AdminPanel: React.FC = () => {
                               <span>Usos: <span className="text-white font-bold">{invite.usedCount}/{invite.maxUses}</span></span>
                               <span>Expira: <span className="text-white font-bold">{new Date(invite.expiresAt).toLocaleDateString('pt-BR')}</span></span>
                             </div>
-                            {(invite.usedBy ?? []).length > 0 && (
+                            {invite.usedBy.length > 0 && (
                               <p className="text-xs text-slate-500 mt-2">Usado por: <span className="text-slate-400">{invite.usedBy.join(', ')}</span></p>
                             )}
                           </div>
