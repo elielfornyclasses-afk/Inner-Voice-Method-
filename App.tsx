@@ -125,11 +125,11 @@ const App: React.FC = () => {
     setIsEditing(true);
   };
 
-  const handleValidCode = (invite: InviteCode) => {
-    setValidatedInvite(invite);
-    setShowAuthModal('signup');
-  };
-
+ const handleValidCode = (invite: InviteCode) => {
+  setValidatedInvite(invite);
+  sessionStorage.setItem('pendingInvite', JSON.stringify(invite));
+  setShowAuthModal('signup');
+};
   const currentMethod = METHODOLOGY.find((m) => m.day === currentDay)!;
 
   const clerkAppearance = {
