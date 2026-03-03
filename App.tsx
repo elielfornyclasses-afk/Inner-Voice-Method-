@@ -94,11 +94,17 @@ if (isSignedIn && user && invite && !user.publicMetadata?.subscription) {
           console.log('📝 Dados da assinatura:', subscriptionData);
           
           console.log('🔄 Atualizando Clerk...');
-          await user.update({
-            publicMetadata: {
-              subscription: subscriptionData
-            }
-          });
+          const response = await fetch('/api/activate-subscription', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    userId: user.id,
+    plan: invite.plan,
+    validityDays: invite.validityDays,
+  }),
+});
+if (!response.ok) throw new Error('Falha ao ativar assinatura');
+const { subscription: activatedSub } = await response.json();
           console.log('✅ Clerk atualizado!');
 
           console.log('🔄 Marcando convite como usado...');
