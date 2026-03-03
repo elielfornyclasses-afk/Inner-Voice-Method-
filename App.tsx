@@ -39,14 +39,7 @@ const App: React.FC = () => {
     const savedText = localStorage.getItem('inner_voice_lesson_text');
     if (savedText) setLessonText(savedText);
   }, []);
-  useEffect(() => {
-  const pending = sessionStorage.getItem('pendingInvite');
-  if (pending) {
-    setValidatedInvite(JSON.parse(pending)); 
-    sessionStorage.removeItem('pendingInvite');
-  }
-}, []);
-
+ 
   useEffect(() => {
     if (user?.publicMetadata?.subscription) {
       setSubscription(user.publicMetadata.subscription as Subscription);
@@ -76,9 +69,18 @@ const App: React.FC = () => {
         hasSubscription: !!user?.publicMetadata?.subscription
       });
 
-      if (isSignedIn && user && validatedInvite && !user.publicMetadata?.subscription) {
+     let invite = validatedInvite;
+if (!invite) {
+  const pending = sessionStorage.getItem('pendingInvite');
+  if (pending) {
+    try { invite = JSON.parse(pending); } catch { sessionStorage.removeItem('pendingInvite'); }
+  }
+}
+
+if (isSignedIn && user && invite && !user.publicMetadata?.subscription) {
         try {
           console.log('✅ Iniciando ativação de assinatura...', validatedInvite);
+          sessionStorage.removeItem('pendingInvite');
           
           const now = Date.now();
           const expiresAt = now + (validatedInvite.validityDays * 24 * 60 * 60 * 1000);
