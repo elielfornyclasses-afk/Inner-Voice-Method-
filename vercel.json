@@ -1,7 +1,10 @@
 {
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
   "functions": {
-    "api/**/*.ts": {
-      "runtime": "@vercel/node"
+    "api/clerk-users.ts": {
+      "runtime": "nodejs20.x"
     }
   }
 }
