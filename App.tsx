@@ -79,14 +79,13 @@ if (!invite) {
 
 if (isSignedIn && user && invite && !user.publicMetadata?.subscription) {
         try {
-          console.log('✅ Iniciando ativação de assinatura...', validatedInvite);
-          sessionStorage.removeItem('pendingInvite');
-          
+         console.log('✅ Iniciando ativação de assinatura...', invite);
+                  
           const now = Date.now();
-          const expiresAt = now + (validatedInvite.validityDays * 24 * 60 * 60 * 1000);
+          const expiresAt = now + (invite.validityDays * 24 * 60 * 60 * 1000);
           
           const subscriptionData = {
-            plan: validatedInvite.plan,
+            plan: invite.plan,
             status: 'active' as const,
             expiresAt,
             startedAt: now
@@ -104,7 +103,7 @@ if (isSignedIn && user && invite && !user.publicMetadata?.subscription) {
 
           console.log('🔄 Marcando convite como usado...');
           const marked = await markInviteAsUsed(
-            validatedInvite.code, 
+            invite.code,
             user.emailAddresses[0]?.emailAddress || ''
           );
           console.log('✅ Convite marcado:', marked);
