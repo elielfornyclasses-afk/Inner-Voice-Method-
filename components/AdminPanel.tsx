@@ -38,7 +38,7 @@ const AdminPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'users' | 'invites'>('users');
 
   // — Renovação —
-  const [renewDays, setRenewDays] = useState<{ [userId: string]: number }>({});
+  const [renewDays, setRenewDays] = useState<{ [userId: string]: string }>({});
   const [renewPlan, setRenewPlan] = useState<{ [userId: string]: string }>({});
 
   useEffect(() => {
