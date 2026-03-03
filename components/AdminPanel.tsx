@@ -494,7 +494,7 @@ const AdminPanel: React.FC = () => {
                               <span>Usos: <span className="text-white font-bold">{invite.usedCount}/{invite.maxUses}</span></span>
                               <span>Expira: <span className="text-white font-bold">{new Date(invite.expiresAt).toLocaleDateString('pt-BR')}</span></span>
                             </div>
-                            {invite.usedBy.length > 0 && (
+                            {(invite.usedBy ?? []).length > 0 && (
                               <p className="text-xs text-slate-500 mt-2">Usado por: <span className="text-slate-400">{invite.usedBy.join(', ')}</span></p>
                             )}
                           </div>
