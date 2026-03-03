@@ -334,8 +334,8 @@ const App: React.FC = () => {
     }
   }
 
-  // Bloqueia usuários sem assinatura (entrou sem convite)
-  if (isSignedIn && !subscription) {
+  // // Bloqueia usuários sem assinatura (exceto admins)
+if (isSignedIn && !subscription && !isAdmin(user?.emailAddresses[0]?.emailAddress)) {
     return (
       <div className="min-h-screen bg-[#020617] flex items-center justify-center p-6">
         <div className="max-w-md w-full text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
