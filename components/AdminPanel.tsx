@@ -286,16 +286,14 @@ const AdminPanel: React.FC = () => {
                                 <option value="premium">Premium</option>
                                 <option value="pro">Pro</option>
                               </select>
-                              <select
-                                value={userRenewDays}
-                                onChange={(e) => setRenewDays(prev => ({ ...prev, [u.id]: Number(e.target.value) }))}
-                                className="flex-1 bg-slate-800 border border-slate-700 text-white text-xs py-2 px-3 rounded-lg"
-                              >
-                                <option value={7}>7 dias</option>
-                                <option value={14}>14 dias</option>
-                                <option value={30}>30 dias</option>
-                                <option value={90}>90 dias</option>
-                              </select>
+                             <input
+  type="number"
+  min={1}
+  placeholder="dias"
+  value={renewDays[u.id] ?? '30'}
+  onChange={(e) => setRenewDays(prev => ({ ...prev, [u.id]: e.target.value }))}
+  className="w-20 bg-slate-800 border border-slate-700 text-white text-xs py-2 px-2 rounded-lg text-center"
+/>
                               <button
                                 disabled={actionLoading === `${u.id}-activate`}
                                 onClick={() => handleUserAction(u.id, 'activate', userRenewPlan, userRenewDays)}
