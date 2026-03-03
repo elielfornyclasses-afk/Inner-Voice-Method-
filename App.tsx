@@ -39,6 +39,13 @@ const App: React.FC = () => {
     const savedText = localStorage.getItem('inner_voice_lesson_text');
     if (savedText) setLessonText(savedText);
   }, []);
+  useEffect(() => {
+  const pending = sessionStorage.getItem('pendingInvite');
+  if (pending) {
+    setValidatedInvite(JSON.parse(pending)); 
+    sessionStorage.removeItem('pendingInvite');
+  }
+}, []);
 
   useEffect(() => {
     if (user?.publicMetadata?.subscription) {
