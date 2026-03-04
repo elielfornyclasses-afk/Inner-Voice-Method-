@@ -34,3 +34,28 @@ export interface AccessCode {
   description: string;
   isActive: boolean;
 }
+
+// Tipos de assinatura
+export type SubscriptionPlan = 'free' | 'premium' | 'pro';
+export type SubscriptionStatus = 'active' | 'expired' | 'cancelled';
+
+export interface Subscription {
+  plan: SubscriptionPlan;
+  status: SubscriptionStatus;
+  expiresAt: number | null;
+  startedAt: number;
+}
+
+// Sistema de convites
+export interface InviteCode {
+  code: string;
+  plan: SubscriptionPlan;
+  validityDays: number;
+  maxUses: number;
+  usedCount: number;
+  createdAt: number;
+  expiresAt: number;
+  isActive: boolean;
+  usedBy: string[]; // Array de emails que usaram
+  createdBy: string; // Email do admin
+}
