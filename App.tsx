@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { SignIn, SignUp, UserButton, useUser, useAuth } from '@clerk/clerk-react';
 import { DayOfWeek, Subscription, InviteCode } from './types';
 import { METHODOLOGY, DEFAULT_LESSON_CONTENT, PEDAGOGICAL_PRINCIPLES } from './constants';
@@ -9,12 +9,8 @@ import InviteCodeInput from './components/InviteCodeInput';
 import AdminPanel from './components/AdminPanel';
 import { markInviteAsUsed } from './services/invites';
 
-// Lista de emails admin (TROQUE pelo seu email!)
-const ADMIN_EMAILS = [
-  'elielfornyclasses@gmail.com',
-];
+const ADMIN_EMAILS = ['elielfornyclasses@gmail.com'];
 
-// Função pra verificar se é admin
 const isAdmin = (email?: string) => {
   if (!email) return false;
   return ADMIN_EMAILS.includes(email.toLowerCase());
@@ -23,7 +19,7 @@ const isAdmin = (email?: string) => {
 const App: React.FC = () => {
   const { isSignedIn, isLoaded, user } = useUser();
   const { signOut } = useAuth();
-  
+
   const [currentDay, setCurrentDay] = useState<DayOfWeek>(DayOfWeek.MONDAY);
   const [sessionStatus, setSessionStatus] = useState<'idle' | 'connecting' | 'active' | 'error'>('idle');
   const [isSessionActive, setIsSessionActive] = useState<boolean>(false);
@@ -35,18 +31,52 @@ const App: React.FC = () => {
   const [validatedInvite, setValidatedInvite] = useState<InviteCode | null>(null);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
 
+  // — Device protection —
+  const [deviceBlocked, setDeviceBlocked] = useState(false);
+  const deviceChecked = useRef(false);
+
   useEffect(() => {
     const savedText = localStorage.getItem('inner_voice_lesson_text');
     if (savedText) setLessonText(savedText);
   }, []);
- 
+
   useEffect(() => {
     if (user?.publicMetadata?.subscription) {
       setSubscription(user.publicMetadata.subscription as Subscription);
     }
   }, [user]);
 
-  // Detecta se deve mostrar painel admin pela URL
+  // Verifica dispositivo autorizado
+  useEffect(() => {
+    const checkDevice = async () => {
+      if (!isSignedIn || !user || deviceChecked.current) return;
+      if (isAdmin(user.emailAddresses[0]?.emailAddress)) return;
+      if (!user.publicMetadata?.subscription) return;
+
+      deviceChecked.current = true;
+
+      let deviceId = localStorage.getItem('ivm_device_id');
+      if (!deviceId) {
+        deviceId = crypto.randomUUID();
+        localStorage.setItem('ivm_device_id', deviceId);
+      }
+
+      try {
+        const res = await fetch('/api/update-device', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id, deviceId, action: 'check' }),
+        });
+        const data = await res.json();
+        if (!data.allowed) setDeviceBlocked(true);
+      } catch (err) {
+        console.error('Erro ao verificar dispositivo:', err);
+      }
+    };
+    checkDevice();
+  }, [isSignedIn, user]);
+
+  // Detecta painel admin pela URL
   useEffect(() => {
     const path = window.location.pathname;
     if (path === '/admin' && isSignedIn && user) {
@@ -59,65 +89,62 @@ const App: React.FC = () => {
     }
   }, [isSignedIn, user]);
 
-  // Quando usuário criar conta com sucesso, ativa assinatura
+  // Ativa assinatura após cadastro
   useEffect(() => {
     const activateSubscription = async () => {
       console.log('🔍 Verificando ativação...', {
         isSignedIn,
         hasUser: !!user,
         hasValidatedInvite: !!validatedInvite,
-        hasSubscription: !!user?.publicMetadata?.subscription
+        hasSubscription: !!user?.publicMetadata?.subscription,
       });
 
-     let invite = validatedInvite;
-if (!invite) {
-  const pending = sessionStorage.getItem('pendingInvite');
-  if (pending) {
-    try { invite = JSON.parse(pending); } catch { sessionStorage.removeItem('pendingInvite'); }
-  }
-}
+      let invite = validatedInvite;
+      if (!invite) {
+        const pending = sessionStorage.getItem('pendingInvite');
+        if (pending) {
+          try { invite = JSON.parse(pending); } catch { sessionStorage.removeItem('pendingInvite'); }
+        }
+      }
 
-if (isSignedIn && user && invite && !user.publicMetadata?.subscription) {
+      if (isSignedIn && user && invite && !user.publicMetadata?.subscription) {
         try {
-         console.log('✅ Iniciando ativação de assinatura...', invite);
-                  
+          console.log('✅ Iniciando ativação de assinatura...', invite);
+
           const now = Date.now();
           const expiresAt = now + (invite.validityDays * 24 * 60 * 60 * 1000);
-          
           const subscriptionData = {
             plan: invite.plan,
             status: 'active' as const,
             expiresAt,
-            startedAt: now
+            startedAt: now,
           };
 
-          console.log('📝 Dados da assinatura:', subscriptionData);
-          
-          console.log('🔄 Atualizando Clerk...');
           const response = await fetch('/api/activate-subscription', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    userId: user.id,
-    plan: invite.plan,
-    validityDays: invite.validityDays,
-  }),
-});
-if (!response.ok) throw new Error('Falha ao ativar assinatura');
-const { subscription: activatedSub } = await response.json();
-          console.log('✅ Clerk atualizado!');
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.id, plan: invite.plan, validityDays: invite.validityDays }),
+          });
+          if (!response.ok) throw new Error('Falha ao ativar assinatura');
+          await response.json();
 
-          console.log('🔄 Marcando convite como usado...');
-          const marked = await markInviteAsUsed(
-            invite.code,
-            user.emailAddresses[0]?.emailAddress || ''
-          );
-          console.log('✅ Convite marcado:', marked);
+          await markInviteAsUsed(invite.code, user.emailAddresses[0]?.emailAddress || '');
+
+          // Registra dispositivo automaticamente no primeiro acesso
+          let deviceId = localStorage.getItem('ivm_device_id');
+          if (!deviceId) {
+            deviceId = crypto.randomUUID();
+            localStorage.setItem('ivm_device_id', deviceId);
+          }
+          await fetch('/api/update-device', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.id, deviceId, action: 'claim' }),
+          });
 
           setSubscription(subscriptionData);
-          console.log('✅ Estado local atualizado!');
-
           setValidatedInvite(null);
+          sessionStorage.removeItem('pendingInvite');
           console.log('🎉 Ativação completa!');
         } catch (error) {
           console.error('❌ Erro ao ativar assinatura:', error);
@@ -139,36 +166,49 @@ const { subscription: activatedSub } = await response.json();
     setIsEditing(true);
   };
 
- const handleValidCode = (invite: InviteCode) => {
-  setValidatedInvite(invite);
-  sessionStorage.setItem('pendingInvite', JSON.stringify(invite));
-  setShowAuthModal('signup');
-};
+  const handleValidCode = (invite: InviteCode) => {
+    setValidatedInvite(invite);
+    sessionStorage.setItem('pendingInvite', JSON.stringify(invite));
+    setShowAuthModal('signup');
+  };
+
+  const handleClaimDevice = async () => {
+    const deviceId = localStorage.getItem('ivm_device_id') || crypto.randomUUID();
+    localStorage.setItem('ivm_device_id', deviceId);
+    await fetch('/api/update-device', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user?.id, deviceId, action: 'claim' }),
+    });
+    setDeviceBlocked(false);
+    deviceChecked.current = false;
+  };
+
   const currentMethod = METHODOLOGY.find((m) => m.day === currentDay)!;
 
   const clerkAppearance = {
     elements: {
-      rootBox: "w-full",
-      card: "shadow-none bg-transparent",
-      headerTitle: "text-white font-black text-xl",
-      headerSubtitle: "text-slate-400",
-      formFieldInput: "bg-slate-950 border-slate-700 text-white placeholder:text-slate-600",
-      formFieldLabel: "text-slate-300 font-bold text-xs uppercase tracking-wider",
-      formButtonPrimary: "bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-900/30",
-      socialButtonsBlockButton: "bg-slate-800 border-slate-700 text-white hover:bg-slate-700",
-      socialButtonsBlockButtonText: "text-white font-semibold",
-      footerActionLink: "text-indigo-400 hover:text-indigo-300 font-bold",
-      dividerLine: "bg-slate-700",
-      dividerText: "text-slate-500",
-      formFieldInputShowPasswordButton: "text-slate-400 hover:text-white",
-      identityPreviewText: "text-slate-300",
-      identityPreviewEditButton: "text-indigo-400 hover:text-indigo-300",
-      formResendCodeLink: "text-indigo-400 hover:text-indigo-300",
-      otpCodeFieldInput: "bg-slate-950 border-slate-700 text-white"
-    }
+      rootBox: 'w-full',
+      card: 'shadow-none bg-transparent',
+      headerTitle: 'text-white font-black text-xl',
+      headerSubtitle: 'text-slate-400',
+      formFieldInput: 'bg-slate-950 border-slate-700 text-white placeholder:text-slate-600',
+      formFieldLabel: 'text-slate-300 font-bold text-xs uppercase tracking-wider',
+      formButtonPrimary: 'bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-900/30',
+      socialButtonsBlockButton: 'bg-slate-800 border-slate-700 text-white hover:bg-slate-700',
+      socialButtonsBlockButtonText: 'text-white font-semibold',
+      footerActionLink: 'text-indigo-400 hover:text-indigo-300 font-bold',
+      dividerLine: 'bg-slate-700',
+      dividerText: 'text-slate-500',
+      formFieldInputShowPasswordButton: 'text-slate-400 hover:text-white',
+      identityPreviewText: 'text-slate-300',
+      identityPreviewEditButton: 'text-indigo-400 hover:text-indigo-300',
+      formResendCodeLink: 'text-indigo-400 hover:text-indigo-300',
+      otpCodeFieldInput: 'bg-slate-950 border-slate-700 text-white',
+    },
   };
 
-  // Loading state
+  // Loading
   if (!isLoaded) {
     return (
       <div className="min-h-screen bg-[#020617] flex items-center justify-center">
@@ -188,10 +228,7 @@ const { subscription: activatedSub } = await response.json();
           <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
-                onClick={() => {
-                  setShowAdminPanel(false);
-                  window.history.pushState({}, '', '/');
-                }}
+                onClick={() => { setShowAdminPanel(false); window.history.pushState({}, '', '/'); }}
                 className="text-slate-400 hover:text-white transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -208,7 +245,7 @@ const { subscription: activatedSub } = await response.json();
     );
   }
 
-  // Auth screen
+  // Tela de login
   if (!isSignedIn) {
     return (
       <div className="min-h-screen bg-[#020617] flex items-center justify-center p-6">
@@ -220,14 +257,11 @@ const { subscription: activatedSub } = await response.json();
             <h1 className="text-3xl font-black text-white mb-2 italic tracking-tight">Inner Voice Method</h1>
             <p className="text-slate-500 font-medium text-sm uppercase tracking-widest">Trainer Professional</p>
           </div>
-          
+
           {showAuthModal === 'signin' && (
             <div className="bg-slate-900/50 rounded-3xl border border-slate-800 shadow-2xl p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <SignIn 
-                appearance={clerkAppearance}
-                afterSignInUrl="/"
-              />
-              <button 
+              <SignIn appearance={clerkAppearance} fallbackRedirectUrl="/" />
+              <button
                 onClick={() => setShowAuthModal('invite')}
                 className="w-full mt-6 text-sm text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-widest transition-colors"
               >
@@ -235,11 +269,11 @@ const { subscription: activatedSub } = await response.json();
               </button>
             </div>
           )}
-          
+
           {showAuthModal === 'invite' && (
             <InviteCodeInput onValidCode={handleValidCode} />
           )}
-          
+
           {showAuthModal === 'signup' && validatedInvite && (
             <div className="space-y-4">
               <div className="bg-green-900/30 border border-green-500/30 rounded-2xl p-4 animate-in fade-in slide-in-from-top-2">
@@ -249,23 +283,14 @@ const { subscription: activatedSub } = await response.json();
                   </svg>
                   <div className="flex-1">
                     <p className="text-green-300 font-bold text-sm">Código validado!</p>
-                    <p className="text-green-400/80 text-xs mt-0.5">
-                      Plano {validatedInvite.plan} • {validatedInvite.validityDays} dias
-                    </p>
+                    <p className="text-green-400/80 text-xs mt-0.5">Plano {validatedInvite.plan} • {validatedInvite.validityDays} dias</p>
                   </div>
                 </div>
               </div>
-
               <div className="bg-slate-900/50 rounded-3xl border border-slate-800 shadow-2xl p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <SignUp 
-                  appearance={clerkAppearance}
-                  afterSignUpUrl="/"
-                />
-                <button 
-                  onClick={() => {
-                    setShowAuthModal('signin');
-                    setValidatedInvite(null);
-                  }}
+                <SignUp appearance={clerkAppearance} fallbackRedirectUrl="/" />
+                <button
+                  onClick={() => { setShowAuthModal('signin'); setValidatedInvite(null); }}
                   className="w-full mt-6 text-sm text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-widest transition-colors"
                 >
                   Já tem conta? Entrar
@@ -273,7 +298,7 @@ const { subscription: activatedSub } = await response.json();
               </div>
             </div>
           )}
-          
+
           {!showAuthModal && (
             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
               <button
@@ -295,11 +320,47 @@ const { subscription: activatedSub } = await response.json();
     );
   }
 
+  // Bloqueio por dispositivo não autorizado
+  if (isSignedIn && deviceBlocked) {
+    return (
+      <div className="min-h-screen bg-[#020617] flex items-center justify-center p-6">
+        <div className="max-w-md w-full text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <div className="bg-slate-900/50 rounded-3xl border border-slate-800 shadow-2xl p-10">
+            <div className="w-20 h-20 bg-orange-900/30 border-2 border-orange-500/30 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-10 h-10 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2h-2" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-black text-white mb-3 italic">Conta em Uso</h2>
+            <p className="text-slate-400 mb-8 leading-relaxed">
+              Esta conta está sendo acessada em outro dispositivo. Deseja usar o app aqui?
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={handleClaimDevice}
+                className="block w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-lg hover:bg-indigo-500 transition-all shadow-2xl shadow-indigo-950/40 uppercase tracking-wider"
+              >
+                📱 Usar neste dispositivo
+              </button>
+              <button
+                onClick={() => signOut()}
+                className="block w-full bg-slate-800 text-slate-400 py-3 rounded-2xl font-bold text-sm hover:bg-slate-700 transition-all uppercase tracking-wider"
+              >
+                Sair
+              </button>
+            </div>
+          </div>
+          <p className="text-slate-600 text-xs mt-6 uppercase tracking-widest">Inner Voice Method • Trainer Professional</p>
+        </div>
+      </div>
+    );
+  }
+
   // Bloqueio por assinatura expirada
   if (isSignedIn && subscription) {
-    const isExpired = subscription.status === 'expired' || 
-                     (subscription.expiresAt && subscription.expiresAt < Date.now());
-    
+    const isExpired = subscription.status === 'expired' ||
+      (subscription.expiresAt && subscription.expiresAt < Date.now());
+
     if (isExpired) {
       return (
         <div className="min-h-screen bg-[#020617] flex items-center justify-center p-6">
@@ -310,7 +371,6 @@ const { subscription: activatedSub } = await response.json();
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
-              
               <h2 className="text-2xl font-black text-white mb-3 italic">Assinatura Expirada</h2>
               <p className="text-slate-400 mb-8 leading-relaxed">
                 Sua assinatura expirou em{' '}
@@ -319,7 +379,6 @@ const { subscription: activatedSub } = await response.json();
                 </span>
                 . Entre em contato para renovar e continuar praticando!
               </p>
-              
               <div className="space-y-3">
                 <a
                   href="https://wa.me/5522999999999?text=Olá!%20Gostaria%20de%20renovar%20minha%20assinatura"
@@ -329,7 +388,6 @@ const { subscription: activatedSub } = await response.json();
                 >
                   💬 Falar no WhatsApp
                 </a>
-                
                 <button
                   onClick={() => signOut()}
                   className="block w-full bg-slate-800 text-slate-400 py-3 rounded-2xl font-bold text-sm hover:bg-slate-700 transition-all uppercase tracking-wider"
@@ -338,18 +396,15 @@ const { subscription: activatedSub } = await response.json();
                 </button>
               </div>
             </div>
-            
-            <p className="text-slate-600 text-xs mt-6 uppercase tracking-widest">
-              Inner Voice Method • Trainer Professional
-            </p>
+            <p className="text-slate-600 text-xs mt-6 uppercase tracking-widest">Inner Voice Method • Trainer Professional</p>
           </div>
         </div>
       );
     }
   }
 
-  // // Bloqueia usuários sem assinatura (exceto admins)
-if (isSignedIn && !subscription && !isAdmin(user?.emailAddresses[0]?.emailAddress)) {
+  // Bloqueio sem assinatura
+  if (isSignedIn && !subscription && !isAdmin(user?.emailAddresses[0]?.emailAddress)) {
     return (
       <div className="min-h-screen bg-[#020617] flex items-center justify-center p-6">
         <div className="max-w-md w-full text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -399,22 +454,15 @@ if (isSignedIn && !subscription && !isAdmin(user?.emailAddresses[0]?.emailAddres
           <div className="flex items-center gap-4">
             {isAdmin(user?.emailAddresses[0]?.emailAddress) && (
               <button
-                onClick={() => {
-                  setShowAdminPanel(true);
-                  window.history.pushState({}, '', '/admin');
-                }}
+                onClick={() => { setShowAdminPanel(true); window.history.pushState({}, '', '/admin'); }}
                 className="text-[10px] font-bold bg-purple-900/30 text-purple-400 px-4 py-2 rounded-lg hover:bg-purple-800/30 transition-colors uppercase tracking-widest border border-purple-500/30"
               >
                 🎛️ Admin
               </button>
             )}
-            <UserButton 
+            <UserButton
               afterSignOutUrl="/"
-              appearance={{
-                elements: {
-                  avatarBox: "w-10 h-10 rounded-xl border-2 border-slate-800"
-                }
-              }}
+              appearance={{ elements: { avatarBox: 'w-10 h-10 rounded-xl border-2 border-slate-800' } }}
             />
           </div>
         </div>
@@ -443,45 +491,45 @@ if (isSignedIn && !subscription && !isAdmin(user?.emailAddresses[0]?.emailAddres
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
           <div className="lg:col-span-4 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
             <div className="bg-gradient-to-br from-indigo-900/40 to-slate-950 p-8 rounded-[2.5rem] border border-indigo-500/20 shadow-2xl relative overflow-hidden">
-               <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -mr-16 -mt-16 blur-3xl"></div>
-               <h4 className="font-black text-[10px] uppercase tracking-widest text-indigo-400 mb-8 flex items-center gap-2">
-                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                 Princípios do Método
-               </h4>
-               <div className="space-y-8">
-                 {PEDAGOGICAL_PRINCIPLES.map((p, idx) => (
-                   <div key={idx} className="group">
-                     <p className="text-[11px] font-black uppercase tracking-wider text-indigo-100 mb-2">{p.title}</p>
-                     <p className="text-slate-500 text-xs font-medium leading-relaxed">{p.description}</p>
-                   </div>
-                 ))}
-               </div>
+              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -mr-16 -mt-16 blur-3xl"></div>
+              <h4 className="font-black text-[10px] uppercase tracking-widest text-indigo-400 mb-8 flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                Princípios do Método
+              </h4>
+              <div className="space-y-8">
+                {PEDAGOGICAL_PRINCIPLES.map((p, idx) => (
+                  <div key={idx} className="group">
+                    <p className="text-[11px] font-black uppercase tracking-wider text-indigo-100 mb-2">{p.title}</p>
+                    <p className="text-slate-500 text-xs font-medium leading-relaxed">{p.description}</p>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="bg-slate-900/50 p-8 rounded-[2.5rem] border border-slate-800 shadow-sm">
-                <div className="flex items-center gap-5 mb-10">
-                  <div className="w-16 h-16 bg-slate-950 text-indigo-500 rounded-2xl flex items-center justify-center text-3xl shadow-2xl border border-slate-800">
-                    {currentDay === DayOfWeek.MONDAY && "🎧"}
-                    {currentDay === DayOfWeek.TUESDAY && "🥁"}
-                    {currentDay === DayOfWeek.WEDNESDAY && "🗣️"}
-                    {currentDay === DayOfWeek.THURSDAY && "🚀"}
-                    {currentDay === DayOfWeek.FRIDAY && "🌟"}
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-black text-white">{currentDay}</h3>
-                    <p className="text-indigo-400 font-black text-[10px] uppercase tracking-widest">{currentMethod.title}</p>
-                  </div>
+              <div className="flex items-center gap-5 mb-10">
+                <div className="w-16 h-16 bg-slate-950 text-indigo-500 rounded-2xl flex items-center justify-center text-3xl shadow-2xl border border-slate-800">
+                  {currentDay === DayOfWeek.MONDAY && '🎧'}
+                  {currentDay === DayOfWeek.TUESDAY && '🥁'}
+                  {currentDay === DayOfWeek.WEDNESDAY && '🗣️'}
+                  {currentDay === DayOfWeek.THURSDAY && '🚀'}
+                  {currentDay === DayOfWeek.FRIDAY && '🌟'}
                 </div>
-                <div className="space-y-6">
-                  {currentMethod.steps.map((step, idx) => (
-                    <div key={idx} className="flex gap-5 items-start">
-                      <div className="mt-1 w-6 h-6 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center text-[10px] font-black text-indigo-500 shadow-inner">
-                        {idx + 1}
-                      </div>
-                      <p className="text-slate-400 text-sm leading-relaxed font-semibold">{step}</p>
+                <div>
+                  <h3 className="text-xl font-black text-white">{currentDay}</h3>
+                  <p className="text-indigo-400 font-black text-[10px] uppercase tracking-widest">{currentMethod.title}</p>
+                </div>
+              </div>
+              <div className="space-y-6">
+                {currentMethod.steps.map((step, idx) => (
+                  <div key={idx} className="flex gap-5 items-start">
+                    <div className="mt-1 w-6 h-6 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center text-[10px] font-black text-indigo-500 shadow-inner">
+                      {idx + 1}
                     </div>
-                  ))}
-                </div>
+                    <p className="text-slate-400 text-sm leading-relaxed font-semibold">{step}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -504,7 +552,6 @@ if (isSignedIn && !subscription && !isAdmin(user?.emailAddresses[0]?.emailAddres
                   </div>
                 )}
               </div>
-              
               <div className="p-12 min-h-[350px]">
                 {isEditing ? (
                   <textarea
@@ -525,7 +572,7 @@ if (isSignedIn && !subscription && !isAdmin(user?.emailAddresses[0]?.emailAddres
                     ) : (
                       <div className="flex flex-col items-center justify-center py-24 text-center">
                         <div className="w-24 h-24 bg-slate-950 rounded-[2rem] flex items-center justify-center text-slate-800 border border-slate-800 mb-8 shadow-inner">
-                           <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" /></svg>
+                          <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" /></svg>
                         </div>
                         <p className="text-slate-600 font-bold text-[11px] uppercase tracking-[0.4em] mb-2">Ciclo Semanal Vazio</p>
                         <button onClick={handleStartEdit} className="text-indigo-400 font-black text-lg hover:text-indigo-300 transition-colors italic">Clique para adicionar seu material de estudo</button>
@@ -537,40 +584,36 @@ if (isSignedIn && !subscription && !isAdmin(user?.emailAddresses[0]?.emailAddres
             </div>
 
             <div className={`bg-slate-900/30 p-12 rounded-[4rem] border border-slate-800 shadow-2xl relative overflow-hidden transition-all ${isEditing ? 'opacity-20 blur-sm pointer-events-none' : 'opacity-100'}`}>
-               {isSessionActive ? (
-                 <LiveVoiceSession 
-                    day={currentDay}
-                    lessonContent={lessonText}
-                    onStatusChange={setSessionStatus}
-                    onClose={() => {
-                      setIsSessionActive(false);
-                      setSessionStatus('idle');
-                    }}
-                 />
-               ) : (
-                 <div className="flex flex-col items-center">
-                    <div className="mb-14 text-center">
-                       <h3 className="text-3xl font-black text-white mb-2 italic tracking-tight">Prática Mentorada</h3>
-                       <p className="text-slate-500 font-medium text-sm">IA Perceptiva com prática técnica e conversação integrada.</p>
-                    </div>
-
-                    <div className="flex justify-center w-full max-w-md">
-                       <button
-                         disabled={!lessonText}
-                         onClick={() => setIsSessionActive(true)}
-                         className="group w-full p-10 bg-indigo-600 rounded-[3rem] text-white flex flex-col items-center gap-6 transition-all hover:scale-[1.03] hover:bg-indigo-500 shadow-2xl shadow-indigo-950/40 disabled:opacity-20 disabled:grayscale"
-                       >
-                         <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center group-hover:bg-white/20 transition-colors shadow-inner">
-                           <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-                         </div>
-                         <div className="text-center">
-                            <span className="block font-black text-lg italic mb-1">Iniciar Modo Prática</span>
-                            <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-[0.2em] opacity-60">Foco + Conversação</span>
-                         </div>
-                       </button>
-                    </div>
-                 </div>
-               )}
+              {isSessionActive ? (
+                <LiveVoiceSession
+                  day={currentDay}
+                  lessonContent={lessonText}
+                  onStatusChange={setSessionStatus}
+                  onClose={() => { setIsSessionActive(false); setSessionStatus('idle'); }}
+                />
+              ) : (
+                <div className="flex flex-col items-center">
+                  <div className="mb-14 text-center">
+                    <h3 className="text-3xl font-black text-white mb-2 italic tracking-tight">Prática Mentorada</h3>
+                    <p className="text-slate-500 font-medium text-sm">IA Perceptiva com prática técnica e conversação integrada.</p>
+                  </div>
+                  <div className="flex justify-center w-full max-w-md">
+                    <button
+                      disabled={!lessonText}
+                      onClick={() => setIsSessionActive(true)}
+                      className="group w-full p-10 bg-indigo-600 rounded-[3rem] text-white flex flex-col items-center gap-6 transition-all hover:scale-[1.03] hover:bg-indigo-500 shadow-2xl shadow-indigo-950/40 disabled:opacity-20 disabled:grayscale"
+                    >
+                      <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center group-hover:bg-white/20 transition-colors shadow-inner">
+                        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                      </div>
+                      <div className="text-center">
+                        <span className="block font-black text-lg italic mb-1">Iniciar Modo Prática</span>
+                        <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-[0.2em] opacity-60">Foco + Conversação</span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -580,7 +623,12 @@ if (isSignedIn && !subscription && !isAdmin(user?.emailAddresses[0]?.emailAddres
         <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-8">
           <div className="text-slate-600 font-black text-[10px] uppercase tracking-[0.5em]">© Inner Voice Method • 2025</div>
           <div className="flex gap-10">
-            <button onClick={() => { if(confirm("Limpar dados?")) { setLessonText(""); localStorage.removeItem('inner_voice_lesson_text'); } }} className="text-slate-700 hover:text-red-900 font-black text-[10px] uppercase tracking-widest transition-colors">System Reset</button>
+            <button
+              onClick={() => { if (confirm('Limpar dados?')) { setLessonText(''); localStorage.removeItem('inner_voice_lesson_text'); } }}
+              className="text-slate-700 hover:text-red-900 font-black text-[10px] uppercase tracking-widest transition-colors"
+            >
+              System Reset
+            </button>
             <div className="text-slate-500 font-black text-[10px] uppercase tracking-widest italic decoration-indigo-500/50 underline-offset-8 underline">Clareza precede prática</div>
           </div>
         </div>
