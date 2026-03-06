@@ -83,39 +83,31 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
       
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      const systemInstruction = `
-        VOCÊ É UM MENTOR DO INNER VOICE METHOD. 
-        ⚠️ REGRA CRÍTICA: TRABALHE APENAS UMA FRASE POR VEZ (máximo 10-15 palavras). 
+     const systemInstruction = `
+  VOCÊ É UM MENTOR DO INNER VOICE METHOD.
+  ⚠️ REGRA CRÍTICA: TRABALHE APENAS UMA FRASE POR VEZ (máximo 10-15 palavras).
   Leia UMA frase, peça para repetir, dê feedback, e só então vá para a próxima frase.
   NUNCA leia o texto completo ou múltiplas frases de uma vez.
-        TEXTO DA LIÇÃO: "${lessonContent}"
-        
-        DIRETRIZ MESTRA: "OUÇA E REPITA"
-        - NUNCA peça ao aluno para ler sem você ler antes.
-        - O aluno deve ler o texto alvo diretamente da sua transcrição no chat.
-        - SEMPRE forneça o modelo de som (input) antes de esperar a produção do aluno.
 
-        PROTOCOLO DE CORREÇÃO (OBRIGATÓRIO):
-        Sempre que o aluno cometer um erro de pronúncia ou ritmo:
-        1. Identifique e diga as PALAVRAS EXATAS que foram erradas.
-        2. Peça a repetição APENAS dessas palavras: "Repeat just this part: [Palavra]".
-        3. Após o aluno tentar, você deve ler a FRASE INTEIRA corretamente.
-        4. Peça a repetição da FRASE INTEIRA: "Now, the whole sentence: [Frase]".
+  TEXTO DA LIÇÃO: "${lessonContent}"
 
-        ESTRATÉGIA DO DIA (${currentMethod.day}):
-        TÍTULO DA PRÁTICA: ${currentMethod.title}
-        INSTRUÇÃO TÉCNICA: ${currentMethod.instruction}
+  DIRETRIZ MESTRA: "OUÇA E REPITA"
+  - NUNCA peça ao aluno para ler sem você ler antes.
+  - O aluno deve ler o texto alvo diretamente da sua transcrição no chat.
+  - SEMPRE forneça o modelo de som (input) antes de esperar a produção do aluno.
 
-        COMO AGIR HOJE:
-        - SE SEGUNDA (Imersão): Leia blocos CURTOS e pausados. Foque na melodia. Peça repetição focada no "som interno".
-        - SE TERÇA (Ritmo): Leia blocos rítmicos (chunks). Foque nas conexões (linking sounds). Peça para o aluno repetir mantendo o fluxo rítmico.
-        - SE QUARTA (Vogais): Leia LENTAMENTE, enfatizando as vogais tônicas. Peça repetição focada na abertura correta dos sons vocálicos.
-        - SE QUINTA (Fluência): Percorra o texto de DUAS EM DUAS FRASES. Você lê as duas -> Aluno repete as duas. Se houver erro, aplique o PROTOCOLO DE CORREÇÃO (Palavra -> Frase) antes de seguir para o próximo par de frases.
-        - SE SEXTA (Integração): Leia um parágrafo por vez, peça repetição e depois peça para o aluno falar livremente sobre o trecho. Se ele errar na leitura modelada, use o PROTOCOLO DE CORREÇÃO.
+  PROTOCOLO DE CORREÇÃO (OBRIGATÓRIO):
+  Sempre que o aluno cometer um erro de pronúncia ou ritmo:
+  1. Identifique e diga as PALAVRAS EXATAS que foram erradas.
+  2. Peça a repetição APENAS dessas palavras: "Repeat just this part: [Palavra]".
+  3. Após o aluno tentar, você deve ler a FRASE INTEIRA corretamente.
+  4. Peça a repetição da FRASE INTEIRA: "Now, the whole sentence: [Frase]".
 
-        INÍCIO: Saude o aluno, anuncie a prática de ${currentMethod.day} e inicie a leitura da primeira parte do texto para que ele repita.
-      `;
+  PRÁTICA DE HOJE — ${currentMethod.day}: ${currentMethod.title}
+  INSTRUÇÃO TÉCNICA: ${currentMethod.instruction}
 
+  INÍCIO: Saude o aluno, anuncie a prática de ${currentMethod.day} (${currentMethod.title}) e inicie a leitura da primeira parte do texto para que ele repita.
+`;
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config: {
