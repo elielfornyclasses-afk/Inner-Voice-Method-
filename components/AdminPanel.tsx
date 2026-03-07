@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import { createInviteCode, listInvites } from '../services/invites';
+import { createLesson, listAllLessons, deleteLesson, Lesson, LessonLanguage } from '../services/lessons';
 import { InviteCode, SubscriptionPlan } from '../types';
 
 interface ClerkUser {
@@ -35,16 +36,32 @@ const AdminPanel: React.FC = () => {
   const [users, setUsers] = useState<ClerkUser[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'invites'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'invites' | 'lessons'>('users');
 
   // — Renovação —
   const [renewDays, setRenewDays] = useState<{ [userId: string]: number }>({});
   const [renewPlan, setRenewPlan] = useState<{ [userId: string]: string }>({});
 
+  // — Lições —
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [isLoadingLessons, setIsLoadingLessons] = useState(false);
+  const [isSavingLesson, setIsSavingLesson] = useState(false);
+  const [lessonStudentEmail, setLessonStudentEmail] = useState('');
+  const [lessonLanguage, setLessonLanguage] = useState<LessonLanguage>('english');
+  const [lessonTitle, setLessonTitle] = useState('');
+  const [lessonDate, setLessonDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [lessonContent, setLessonContent] = useState('');
+  const [lessonSuccess, setLessonSuccess] = useState(false);
+  const [deletingLesson, setDeletingLesson] = useState<string | null>(null);
+
   useEffect(() => {
     loadInvites();
     loadUsers();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'lessons') loadLessons();
+  }, [activeTab]);
 
   const loadInvites = async () => {
     setIsLoadingInvites(true);
@@ -66,6 +83,13 @@ const AdminPanel: React.FC = () => {
     setIsLoadingUsers(false);
   };
 
+  const loadLessons = async () => {
+    setIsLoadingLessons(true);
+    const data = await listAllLessons();
+    setLessons(data);
+    setIsLoadingLessons(false);
+  };
+
   const handleUserAction = async (
     userId: string,
     action: 'activate' | 'renew' | 'block' | 'unblock',
@@ -85,7 +109,6 @@ const AdminPanel: React.FC = () => {
         alert('Erro ao executar ação. Tente novamente.');
       }
     } catch (error) {
-      console.error('Erro:', error);
       alert('Erro ao executar ação.');
     }
     setActionLoading(null);
@@ -97,19 +120,49 @@ const AdminPanel: React.FC = () => {
     if (!days || days < 1) { alert('Informe um número de dias válido.'); return; }
     setIsGenerating(true);
     try {
-      const invite = await createInviteCode(
-        selectedPlan,
-        days,
-        maxUses,
-        user.emailAddresses[0].emailAddress
-      );
+      const invite = await createInviteCode(selectedPlan, days, maxUses, user.emailAddresses[0].emailAddress);
       setGeneratedCode(invite.code);
       await loadInvites();
     } catch (error) {
-      console.error('Erro ao gerar código:', error);
       alert('Erro ao gerar código. Tente novamente.');
     }
     setIsGenerating(false);
+  };
+
+  const handleSaveLesson = async () => {
+    if (!lessonStudentEmail.trim()) { alert('Informe o email do aluno.'); return; }
+    if (!lessonTitle.trim()) { alert('Informe o título da lição.'); return; }
+    if (!lessonContent.trim()) { alert('Informe o conteúdo da lição.'); return; }
+    if (!lessonDate) { alert('Informe a data da lição.'); return; }
+    if (!user?.emailAddresses[0]?.emailAddress) return;
+
+    setIsSavingLesson(true);
+    try {
+      await createLesson({
+        title: lessonTitle.trim(),
+        content: lessonContent.trim(),
+        language: lessonLanguage,
+        studentEmail: lessonStudentEmail.trim().toLowerCase(),
+        date: lessonDate,
+        createdBy: user.emailAddresses[0].emailAddress,
+      });
+      setLessonTitle('');
+      setLessonContent('');
+      setLessonSuccess(true);
+      setTimeout(() => setLessonSuccess(false), 3000);
+      await loadLessons();
+    } catch (error) {
+      alert('Erro ao salvar lição. Tente novamente.');
+    }
+    setIsSavingLesson(false);
+  };
+
+  const handleDeleteLesson = async (lessonId: string) => {
+    if (!confirm('Deletar esta lição?')) return;
+    setDeletingLesson(lessonId);
+    await deleteLesson(lessonId);
+    await loadLessons();
+    setDeletingLesson(null);
   };
 
   const copyToClipboard = (text: string) => {
@@ -152,6 +205,11 @@ const AdminPanel: React.FC = () => {
     slate: 'bg-slate-800/50 border-slate-700 text-slate-400',
   };
 
+  const languageLabel = (l: LessonLanguage) => l === 'english' ? '🇬🇧 Inglês' : '🇫🇷 Francês';
+
+  // Alunos com email para autocomplete
+  const studentEmails = users.map(u => u.email_addresses[0]?.email_address).filter(Boolean);
+
   return (
     <div className="min-h-screen bg-[#020617] py-12 px-6">
       <div className="max-w-6xl mx-auto">
@@ -186,33 +244,26 @@ const AdminPanel: React.FC = () => {
             <p className="text-3xl font-black text-blue-300">{stats.used}</p>
           </div>
           <div className="bg-purple-900/20 border border-purple-500/30 rounded-2xl p-6">
-            <p className="text-purple-400 text-xs font-bold uppercase tracking-wider mb-2">Códigos Ativos</p>
-            <p className="text-3xl font-black text-purple-300">{stats.active}</p>
+            <p className="text-purple-400 text-xs font-bold uppercase tracking-wider mb-2">Lições</p>
+            <p className="text-3xl font-black text-purple-300">{lessons.length}</p>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-8">
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`px-6 py-3 rounded-xl font-black text-sm uppercase tracking-wider transition-all ${
-              activeTab === 'users'
-                ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/30'
-                : 'bg-slate-900/50 text-slate-400 hover:text-white border border-slate-800'
-            }`}
-          >
-            👥 Alunos
-          </button>
-          <button
-            onClick={() => setActiveTab('invites')}
-            className={`px-6 py-3 rounded-xl font-black text-sm uppercase tracking-wider transition-all ${
-              activeTab === 'invites'
-                ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/30'
-                : 'bg-slate-900/50 text-slate-400 hover:text-white border border-slate-800'
-            }`}
-          >
-            🎫 Convites
-          </button>
+        <div className="flex gap-2 mb-8 flex-wrap">
+          {(['users', 'lessons', 'invites'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-6 py-3 rounded-xl font-black text-sm uppercase tracking-wider transition-all ${
+                activeTab === tab
+                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/30'
+                  : 'bg-slate-900/50 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+            >
+              {tab === 'users' ? '👥 Alunos' : tab === 'lessons' ? '📚 Lições' : '🎫 Convites'}
+            </button>
+          ))}
         </div>
 
         {/* TAB: ALUNOS */}
@@ -225,10 +276,7 @@ const AdminPanel: React.FC = () => {
                 </svg>
                 Alunos Cadastrados
               </h2>
-              <button
-                onClick={loadUsers}
-                className="text-xs font-bold text-slate-400 hover:text-white px-4 py-2 bg-slate-800 rounded-lg transition-all"
-              >
+              <button onClick={loadUsers} className="text-xs font-bold text-slate-400 hover:text-white px-4 py-2 bg-slate-800 rounded-lg transition-all">
                 🔄 Atualizar
               </button>
             </div>
@@ -257,7 +305,6 @@ const AdminPanel: React.FC = () => {
                   return (
                     <div key={u.id} className="bg-slate-950 border border-slate-800 rounded-2xl p-5">
                       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                        {/* Info */}
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-1">
                             <p className="text-white font-black">{name}</p>
@@ -274,10 +321,7 @@ const AdminPanel: React.FC = () => {
                             </p>
                           )}
                         </div>
-
-                        {/* Ações */}
                         <div className="flex flex-col gap-2 min-w-[240px]">
-                          {/* Sem plano: ativar */}
                           {!sub && (
                             <div className="flex gap-2">
                               <select
@@ -290,14 +334,11 @@ const AdminPanel: React.FC = () => {
                                 <option value="pro">Pro</option>
                               </select>
                               <input
-                                type="number"
-                                min={1}
-                                placeholder="dias"
+                                type="number" min={1} placeholder="dias"
                                 value={userRenewDaysStr}
-                                onChange={(e) => setRenewDays(prev => ({ ...prev, [u.id]: e.target.value }))}
+                                onChange={(e) => setRenewDays(prev => ({ ...prev, [u.id]: Number(e.target.value) }))}
                                 className="w-16 bg-slate-800 border border-slate-700 text-white text-xs py-2 px-2 rounded-lg text-center"
                               />
-                              <span className="text-slate-500 text-xs">d</span>
                               <button
                                 disabled={actionLoading === `${u.id}-activate`}
                                 onClick={() => handleUserAction(u.id, 'activate', userRenewPlan, userRenewDaysNum)}
@@ -307,16 +348,12 @@ const AdminPanel: React.FC = () => {
                               </button>
                             </div>
                           )}
-
-                          {/* Com plano: renovar */}
                           {sub && !isBlocked && (
                             <div className="flex gap-2 items-center">
                               <input
-                                type="number"
-                                min={1}
-                                placeholder="dias"
+                                type="number" min={1} placeholder="dias"
                                 value={userRenewDaysStr}
-                                onChange={(e) => setRenewDays(prev => ({ ...prev, [u.id]: e.target.value }))}
+                                onChange={(e) => setRenewDays(prev => ({ ...prev, [u.id]: Number(e.target.value) }))}
                                 className="w-20 bg-slate-800 border border-slate-700 text-white text-xs py-2 px-2 rounded-lg text-center"
                               />
                               <span className="text-slate-500 text-xs">dias</span>
@@ -329,8 +366,6 @@ const AdminPanel: React.FC = () => {
                               </button>
                             </div>
                           )}
-
-                          {/* Bloquear / Desbloquear */}
                           {sub && (
                             <button
                               disabled={actionLoading === `${u.id}-block` || actionLoading === `${u.id}-unblock`}
@@ -341,9 +376,7 @@ const AdminPanel: React.FC = () => {
                                   : 'bg-red-900/30 text-red-400 hover:bg-red-900/50 border border-red-500/30'
                               }`}
                             >
-                              {actionLoading === `${u.id}-block` || actionLoading === `${u.id}-unblock`
-                                ? '...'
-                                : isBlocked ? '✅ Desbloquear' : '🚫 Bloquear'}
+                              {actionLoading === `${u.id}-block` || actionLoading === `${u.id}-unblock` ? '...' : isBlocked ? '✅ Desbloquear' : '🚫 Bloquear'}
                             </button>
                           )}
                         </div>
@@ -356,10 +389,162 @@ const AdminPanel: React.FC = () => {
           </div>
         )}
 
+        {/* TAB: LIÇÕES */}
+        {activeTab === 'lessons' && (
+          <div className="space-y-8">
+
+            {/* Formulário nova lição */}
+            <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-8">
+              <h2 className="text-xl font-black text-white mb-6 flex items-center gap-3">
+                <svg className="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Nova Lição
+              </h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                {/* Email do aluno */}
+                <div>
+                  <label className="block text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Aluno</label>
+                  <input
+                    type="email"
+                    list="student-emails"
+                    placeholder="email@aluno.com"
+                    value={lessonStudentEmail}
+                    onChange={(e) => setLessonStudentEmail(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 text-white py-3 px-4 rounded-xl font-medium focus:border-indigo-500 outline-none placeholder:text-slate-600"
+                  />
+                  <datalist id="student-emails">
+                    {studentEmails.map(email => <option key={email} value={email} />)}
+                  </datalist>
+                </div>
+
+                {/* Idioma */}
+                <div>
+                  <label className="block text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Idioma</label>
+                  <div className="flex gap-3">
+                    {(['english', 'french'] as LessonLanguage[]).map(lang => (
+                      <button
+                        key={lang}
+                        onClick={() => setLessonLanguage(lang)}
+                        className={`flex-1 py-3 rounded-xl font-black text-sm transition-all border ${
+                          lessonLanguage === lang
+                            ? 'bg-indigo-600 text-white border-indigo-500'
+                            : 'bg-slate-950 text-slate-400 border-slate-700 hover:border-slate-600'
+                        }`}
+                      >
+                        {languageLabel(lang)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Título */}
+                <div>
+                  <label className="block text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Título</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: The Importance of Listening"
+                    value={lessonTitle}
+                    onChange={(e) => setLessonTitle(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 text-white py-3 px-4 rounded-xl font-medium focus:border-indigo-500 outline-none placeholder:text-slate-600"
+                  />
+                </div>
+
+                {/* Data */}
+                <div>
+                  <label className="block text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Data da Lição</label>
+                  <input
+                    type="date"
+                    value={lessonDate}
+                    onChange={(e) => setLessonDate(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 text-white py-3 px-4 rounded-xl font-medium focus:border-indigo-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Conteúdo */}
+              <div className="mb-6">
+                <label className="block text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Texto da Lição</label>
+                <textarea
+                  rows={8}
+                  placeholder="Cole aqui o texto da lição..."
+                  value={lessonContent}
+                  onChange={(e) => setLessonContent(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 text-white py-3 px-4 rounded-xl font-medium focus:border-indigo-500 outline-none resize-none placeholder:text-slate-600 leading-relaxed"
+                />
+              </div>
+
+              <button
+                onClick={handleSaveLesson}
+                disabled={isSavingLesson}
+                className="w-full bg-indigo-600 text-white py-4 rounded-xl font-black text-lg hover:bg-indigo-500 transition-all shadow-lg disabled:opacity-50 uppercase tracking-wider"
+              >
+                {isSavingLesson ? 'Salvando...' : '📚 Salvar Lição'}
+              </button>
+
+              {lessonSuccess && (
+                <div className="mt-4 bg-green-900/30 border border-green-500/30 rounded-2xl p-4 animate-in fade-in slide-in-from-top-2">
+                  <p className="text-green-300 font-bold text-sm text-center">✅ Lição salva com sucesso!</p>
+                </div>
+              )}
+            </div>
+
+            {/* Lista de lições */}
+            <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-8">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-black text-white">Lições Cadastradas</h2>
+                <button onClick={loadLessons} className="text-xs font-bold text-slate-400 hover:text-white px-4 py-2 bg-slate-800 rounded-lg transition-all">
+                  🔄 Atualizar
+                </button>
+              </div>
+
+              {isLoadingLessons ? (
+                <div className="text-center py-12">
+                  <div className="w-12 h-12 border-4 border-slate-700 border-t-indigo-500 rounded-full animate-spin mx-auto mb-4"></div>
+                  <p className="text-slate-500">Carregando...</p>
+                </div>
+              ) : lessons.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-slate-500">Nenhuma lição cadastrada ainda.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {lessons.map((lesson) => (
+                    <div key={lesson.id} className="bg-slate-950 border border-slate-800 rounded-2xl p-5">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-1 flex-wrap">
+                            <p className="text-white font-black">{lesson.title}</p>
+                            <span className="px-2 py-0.5 bg-indigo-900/40 border border-indigo-500/30 text-indigo-400 text-xs font-bold rounded-full">
+                              {languageLabel(lesson.language)}
+                            </span>
+                          </div>
+                          <p className="text-slate-500 text-sm">{lesson.studentEmail}</p>
+                          <p className="text-slate-600 text-xs mt-1">
+                            {new Date(lesson.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </p>
+                          <p className="text-slate-600 text-xs mt-2 line-clamp-2">{lesson.content.substring(0, 120)}...</p>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteLesson(lesson.id!)}
+                          disabled={deletingLesson === lesson.id}
+                          className="text-red-400/50 hover:text-red-400 transition-colors text-xs font-bold px-3 py-2 rounded-lg hover:bg-red-900/20 disabled:opacity-30"
+                        >
+                          {deletingLesson === lesson.id ? '...' : '🗑️'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* TAB: CONVITES */}
         {activeTab === 'invites' && (
           <div className="space-y-8">
-            {/* Gerador */}
             <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-8">
               <h2 className="text-xl font-black text-white mb-6 flex items-center gap-3">
                 <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -367,15 +552,11 @@ const AdminPanel: React.FC = () => {
                 </svg>
                 Gerar Novo Código
               </h2>
-
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                 <div>
                   <label className="block text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Plano</label>
-                  <select
-                    value={selectedPlan}
-                    onChange={(e) => setSelectedPlan(e.target.value as SubscriptionPlan)}
-                    className="w-full bg-slate-950 border border-slate-700 text-white py-3 px-4 rounded-xl font-bold focus:border-purple-500 outline-none"
-                  >
+                  <select value={selectedPlan} onChange={(e) => setSelectedPlan(e.target.value as SubscriptionPlan)}
+                    className="w-full bg-slate-950 border border-slate-700 text-white py-3 px-4 rounded-xl font-bold focus:border-purple-500 outline-none">
                     <option value="free">Free</option>
                     <option value="premium">Premium</option>
                     <option value="pro">Professional</option>
@@ -383,21 +564,13 @@ const AdminPanel: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Validade (dias)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    placeholder="Ex: 30"
-                    value={validityDays}
+                  <input type="number" min={1} placeholder="Ex: 30" value={validityDays}
                     onChange={(e) => setValidityDays(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 text-white py-3 px-4 rounded-xl font-bold focus:border-purple-500 outline-none"
-                  />
+                    className="w-full bg-slate-950 border border-slate-700 text-white py-3 px-4 rounded-xl font-bold focus:border-purple-500 outline-none" />
                   <div className="flex gap-2 mt-2">
                     {[7, 14, 30, 90, 365].map(d => (
-                      <button
-                        key={d}
-                        onClick={() => setValidityDays(String(d))}
-                        className={`flex-1 py-1 text-xs font-bold rounded-lg transition-all ${validityDays === String(d) ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
-                      >
+                      <button key={d} onClick={() => setValidityDays(String(d))}
+                        className={`flex-1 py-1 text-xs font-bold rounded-lg transition-all ${validityDays === String(d) ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>
                         {d === 365 ? '1a' : `${d}d`}
                       </button>
                     ))}
@@ -405,11 +578,8 @@ const AdminPanel: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Usos</label>
-                  <select
-                    value={maxUses}
-                    onChange={(e) => setMaxUses(Number(e.target.value))}
-                    className="w-full bg-slate-950 border border-slate-700 text-white py-3 px-4 rounded-xl font-bold focus:border-purple-500 outline-none"
-                  >
+                  <select value={maxUses} onChange={(e) => setMaxUses(Number(e.target.value))}
+                    className="w-full bg-slate-950 border border-slate-700 text-white py-3 px-4 rounded-xl font-bold focus:border-purple-500 outline-none">
                     <option value={1}>1 uso</option>
                     <option value={5}>5 usos</option>
                     <option value={10}>10 usos</option>
@@ -417,15 +587,10 @@ const AdminPanel: React.FC = () => {
                   </select>
                 </div>
               </div>
-
-              <button
-                onClick={handleGenerateCode}
-                disabled={isGenerating}
-                className="w-full bg-purple-600 text-white py-4 rounded-xl font-black text-lg hover:bg-purple-500 transition-all shadow-lg disabled:opacity-50 uppercase tracking-wider"
-              >
+              <button onClick={handleGenerateCode} disabled={isGenerating}
+                className="w-full bg-purple-600 text-white py-4 rounded-xl font-black text-lg hover:bg-purple-500 transition-all shadow-lg disabled:opacity-50 uppercase tracking-wider">
                 {isGenerating ? 'Gerando...' : '🎫 Gerar Código'}
               </button>
-
               {generatedCode && (
                 <div className="mt-6 bg-green-900/30 border border-green-500/30 rounded-2xl p-6 animate-in fade-in slide-in-from-top-2">
                   <p className="text-green-300 font-bold text-sm mb-3">✅ Código gerado!</p>
@@ -433,53 +598,30 @@ const AdminPanel: React.FC = () => {
                     <p className="text-white text-2xl font-black text-center tracking-widest">{generatedCode}</p>
                   </div>
                   <div className="flex gap-3">
-                    <button
-                      onClick={() => copyToClipboard(generatedCode)}
-                      className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-700 transition-all"
-                    >
-                      📋 Copiar
-                    </button>
-                    <button
-                      onClick={() => shareOnWhatsApp(generatedCode)}
-                      className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-500 transition-all"
-                    >
-                      💬 WhatsApp
-                    </button>
+                    <button onClick={() => copyToClipboard(generatedCode)} className="flex-1 bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-700 transition-all">📋 Copiar</button>
+                    <button onClick={() => shareOnWhatsApp(generatedCode)} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-500 transition-all">💬 WhatsApp</button>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Lista de códigos */}
             <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-8">
-              <h2 className="text-xl font-black text-white mb-6 flex items-center gap-3">
-                <svg className="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-                Códigos Criados
-              </h2>
-
+              <h2 className="text-xl font-black text-white mb-6">Códigos Criados</h2>
               {isLoadingInvites ? (
                 <div className="text-center py-12">
                   <div className="w-12 h-12 border-4 border-slate-700 border-t-purple-500 rounded-full animate-spin mx-auto mb-4"></div>
                   <p className="text-slate-500">Carregando...</p>
                 </div>
               ) : invites.length === 0 ? (
-                <div className="text-center py-12">
-                  <p className="text-slate-500">Nenhum código criado ainda.</p>
-                </div>
+                <div className="text-center py-12"><p className="text-slate-500">Nenhum código criado ainda.</p></div>
               ) : (
                 <div className="space-y-3">
                   {invites.map((invite, idx) => {
                     const isExpired = Date.now() >= invite.expiresAt;
                     const isUsed = invite.usedCount >= invite.maxUses;
                     const isAvailable = !isExpired && !isUsed && invite.isActive;
-
                     return (
-                      <div
-                        key={idx}
-                        className={`border rounded-2xl p-4 ${isAvailable ? 'bg-slate-950 border-slate-700' : 'bg-slate-950/50 border-slate-800 opacity-60'}`}
-                      >
+                      <div key={idx} className={`border rounded-2xl p-4 ${isAvailable ? 'bg-slate-950 border-slate-700' : 'bg-slate-950/50 border-slate-800 opacity-60'}`}>
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-2">
@@ -499,12 +641,7 @@ const AdminPanel: React.FC = () => {
                             )}
                           </div>
                           {isAvailable && (
-                            <button
-                              onClick={() => copyToClipboard(invite.code)}
-                              className="px-4 py-2 bg-slate-800 text-white text-sm font-bold rounded-lg hover:bg-slate-700 transition-all"
-                            >
-                              📋 Copiar
-                            </button>
+                            <button onClick={() => copyToClipboard(invite.code)} className="px-4 py-2 bg-slate-800 text-white text-sm font-bold rounded-lg hover:bg-slate-700 transition-all">📋 Copiar</button>
                           )}
                         </div>
                       </div>
