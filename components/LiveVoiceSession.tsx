@@ -1,4 +1,3 @@
-
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { GoogleGenAI, Modality } from '@google/genai';
 import { decodeAudioData, decodeBase64, createPcmBlob } from '../services/gemini';
@@ -15,12 +14,10 @@ interface LiveVoiceSessionProps {
 const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent, onStatusChange, onClose }) => {
   const [localStatus, setLocalStatus] = useState<'connecting' | 'active' | 'error'>('connecting');
   const [history, setHistory] = useState<TranscriptionItem[]>([]);
-  
-  const currentInputTextRef = useRef('');
+
   const currentOutputTextRef = useRef('');
-  const [displayInputText, setDisplayInputText] = useState('');
   const [displayOutputText, setDisplayOutputText] = useState('');
-  
+
   const sessionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const outputAudioContextRef = useRef<AudioContext | null>(null);
@@ -34,27 +31,23 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [history, displayInputText, displayOutputText]);
+  }, [history, displayOutputText]);
 
   const stopSession = useCallback(() => {
     if (sessionRef.current) {
       try { sessionRef.current.close?.(); } catch (e) {}
       sessionRef.current = null;
     }
-    
     if (audioContextRef.current) {
       audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
     }
-
     if (outputAudioContextRef.current) {
       outputAudioContextRef.current.close().catch(() => {});
       outputAudioContextRef.current = null;
     }
-    
     sourcesRef.current.forEach(s => { try { s.stop(); } catch (e) {} });
     sourcesRef.current.clear();
-    
     onStatusChange('idle');
     onClose();
   }, [onStatusChange, onClose]);
@@ -69,52 +62,53 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
         setLocalStatus('error');
         return;
       }
-      
+
       const ai = new GoogleGenAI({ apiKey });
-      
+
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       const outputAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      
+
       if (audioCtx.state === 'suspended') await audioCtx.resume();
       if (outputAudioCtx.state === 'suspended') await outputAudioCtx.resume();
-      
+
       audioContextRef.current = audioCtx;
       outputAudioContextRef.current = outputAudioCtx;
-      
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
+
       const systemInstruction = `
-        VOCÊ É UM MENTOR DO INNER VOICE METHOD. 
-        ⚠️ REGRA CRÍTICA: TRABALHE APENAS UMA FRASE POR VEZ (máximo 10-15 palavras). 
-  Leia UMA frase, peça para repetir, dê feedback, e só então vá para a próxima frase.
-  NUNCA leia o texto completo ou múltiplas frases de uma vez.
-        TEXTO DA LIÇÃO: "${lessonContent}"
-        
-        DIRETRIZ MESTRA: "OUÇA E REPITA"
-        - NUNCA peça ao aluno para ler sem você ler antes.
-        - O aluno deve ler o texto alvo diretamente da sua transcrição no chat.
-        - SEMPRE forneça o modelo de som (input) antes de esperar a produção do aluno.
+VOCÊ É UM MENTOR DO INNER VOICE METHOD.
 
-        PROTOCOLO DE CORREÇÃO (OBRIGATÓRIO):
-        Sempre que o aluno cometer um erro de pronúncia ou ritmo:
-        1. Identifique e diga as PALAVRAS EXATAS que foram erradas.
-        2. Peça a repetição APENAS dessas palavras: "Repeat just this part: [Palavra]".
-        3. Após o aluno tentar, você deve ler a FRASE INTEIRA corretamente.
-        4. Peça a repetição da FRASE INTEIRA: "Now, the whole sentence: [Frase]".
+⚠️ REGRA CRÍTICA DE PACIÊNCIA (OBRIGATÓRIA):
+Após ler uma frase ou pedir uma repetição, você DEVE AGUARDAR em silêncio até o aluno terminar de responder.
+NUNCA continue para a próxima instrução antes de ouvir a resposta do aluno.
+NUNCA diga "Now the whole sentence" antes de o aluno ter tentado repetir a parte isolada.
+A sequência OBRIGATÓRIA é: você fala → aluno responde → você dá feedback → próximo passo.
 
-        ESTRATÉGIA DO DIA (${currentMethod.day}):
-        TÍTULO DA PRÁTICA: ${currentMethod.title}
-        INSTRUÇÃO TÉCNICA: ${currentMethod.instruction}
+⚠️ REGRA DE RITMO: TRABALHE APENAS UMA FRASE POR VEZ (máximo 10-15 palavras).
+Leia UMA frase, aguarde o aluno repetir, dê feedback, e só então vá para a próxima frase.
+NUNCA leia o texto completo ou múltiplas frases de uma vez.
 
-        COMO AGIR HOJE:
-        - SE SEGUNDA (Imersão): Leia blocos CURTOS e pausados. Foque na melodia. Peça repetição focada no "som interno".
-        - SE TERÇA (Ritmo): Leia blocos rítmicos (chunks). Foque nas conexões (linking sounds). Peça para o aluno repetir mantendo o fluxo rítmico.
-        - SE QUARTA (Vogais): Leia LENTAMENTE, enfatizando as vogais tônicas. Peça repetição focada na abertura correta dos sons vocálicos.
-        - SE QUINTA (Fluência): Percorra o texto de DUAS EM DUAS FRASES. Você lê as duas -> Aluno repete as duas. Se houver erro, aplique o PROTOCOLO DE CORREÇÃO (Palavra -> Frase) antes de seguir para o próximo par de frases.
-        - SE SEXTA (Integração): Leia um parágrafo por vez, peça repetição e depois peça para o aluno falar livremente sobre o trecho. Se ele errar na leitura modelada, use o PROTOCOLO DE CORREÇÃO.
+TEXTO DA LIÇÃO: "${lessonContent}"
 
-        INÍCIO: Saude o aluno, anuncie a prática de ${currentMethod.day} e inicie a leitura da primeira parte do texto para que ele repita.
-      `;
+DIRETRIZ MESTRA: "OUÇA E REPITA"
+- NUNCA peça ao aluno para ler sem você ler antes.
+- SEMPRE forneça o modelo de som antes de esperar a produção do aluno.
+
+PROTOCOLO DE CORREÇÃO (OBRIGATÓRIO):
+Sempre que o aluno cometer um erro de pronúncia ou ritmo:
+1. Identifique e diga as PALAVRAS EXATAS que foram erradas.
+2. Peça a repetição APENAS dessas palavras: "Repeat just this part: [Palavra]".
+3. AGUARDE o aluno repetir a palavra isolada.
+4. Somente após a resposta do aluno, leia a FRASE INTEIRA corretamente.
+5. Peça a repetição da FRASE INTEIRA: "Now, the whole sentence: [Frase]".
+6. AGUARDE o aluno repetir a frase inteira antes de continuar.
+
+PRÁTICA DE HOJE — ${currentMethod.day}: ${currentMethod.title}
+INSTRUÇÃO TÉCNICA: ${currentMethod.instruction}
+
+INÍCIO: Saude o aluno brevemente, anuncie a prática de ${currentMethod.day} (${currentMethod.title}) e inicie a leitura da primeira frase do texto para que ele repita.
+`;
 
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
@@ -131,44 +125,37 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
           onopen: () => {
             setLocalStatus('active');
             onStatusChange('active');
-            
+
             const source = audioContextRef.current!.createMediaStreamSource(stream);
             const scriptProcessor = audioContextRef.current!.createScriptProcessor(4096, 1, 1);
-            
+
             scriptProcessor.onaudioprocess = (e) => {
               const inputData = e.inputBuffer.getChannelData(0);
               const pcmBlob = createPcmBlob(inputData);
-              sessionPromise.then((session) => { 
-                if (session) session.sendRealtimeInput({ media: pcmBlob }); 
+              sessionPromise.then((session) => {
+                if (session) session.sendRealtimeInput({ media: pcmBlob });
               }).catch(() => {});
             };
-            
+
             source.connect(scriptProcessor);
             scriptProcessor.connect(audioContextRef.current!.destination);
           },
           onmessage: async (message) => {
-            if (message.serverContent?.inputTranscription) {
-              currentInputTextRef.current += message.serverContent.inputTranscription.text;
-              setDisplayInputText(currentInputTextRef.current);
-            }
+            // Ignora transcrição do aluno — não exibe no chat
             if (message.serverContent?.outputTranscription) {
               currentOutputTextRef.current += message.serverContent.outputTranscription.text;
               setDisplayOutputText(currentOutputTextRef.current);
             }
 
             if (message.serverContent?.turnComplete) {
-              const userT = currentInputTextRef.current;
               const aiT = currentOutputTextRef.current;
-              if (userT.trim() || aiT.trim()) {
+              if (aiT.trim()) {
                 setHistory(prev => [
                   ...prev,
-                  { speaker: 'user' as const, text: userT, timestamp: Date.now() },
                   { speaker: 'ai' as const, text: aiT, timestamp: Date.now() }
-                ].filter(i => i.text.trim() !== ''));
+                ]);
               }
-              currentInputTextRef.current = '';
               currentOutputTextRef.current = '';
-              setDisplayInputText('');
               setDisplayOutputText('');
             }
 
@@ -178,19 +165,19 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
                   const ctx = outputAudioContextRef.current;
                   const decodedBytes = decodeBase64(part.inlineData.data);
                   const buffer = await decodeAudioData(decodedBytes, ctx, 24000, 1);
-                  
+
                   const startTime = Math.max(nextStartTimeRef.current, ctx.currentTime);
                   const source = ctx.createBufferSource();
                   source.buffer = buffer;
                   source.connect(ctx.destination);
-                  
+
                   source.onended = () => {
                     sourcesRef.current.delete(source);
                   };
-                  
+
                   source.start(startTime);
                   nextStartTimeRef.current = startTime + buffer.duration;
-                  sourcesRef.add(source);
+                  sourcesRef.current.add(source); // Fix: era sourcesRef.add
                 }
               }
             }
@@ -235,16 +222,19 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
   return (
     <div className="flex flex-col items-center gap-6 sm:gap-8 w-full animate-in fade-in duration-700">
       <div className="relative">
-        <div className={`w-24 h-24 sm:w-28 sm:h-28 rounded-[2rem] sm:rounded-[2.5rem] flex items-center justify-center shadow-2xl border-2 border-indigo-500 bg-slate-950 transition-all duration-700`}>
-           <svg className="w-12 h-12 sm:w-14 sm:h-14 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
-           <div className="absolute -top-1 -right-1">
-              <span className={`flex w-4 h-4 rounded-full bg-indigo-500 animate-ping opacity-75`}></span>
-           </div>
+        <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-[2rem] sm:rounded-[2.5rem] flex items-center justify-center shadow-2xl border-2 border-indigo-500 bg-slate-950 transition-all duration-700">
+          <svg className="w-12 h-12 sm:w-14 sm:h-14 text-indigo-500" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+            <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+          </svg>
+          <div className="absolute -top-1 -right-1">
+            <span className="flex w-4 h-4 rounded-full bg-indigo-500 animate-ping opacity-75"></span>
+          </div>
         </div>
       </div>
 
       <div className="text-center">
-        <p className={`font-black text-[10px] uppercase tracking-[0.4em] mb-1 sm:mb-2 italic text-indigo-400`}>
+        <p className="font-black text-[10px] uppercase tracking-[0.4em] mb-1 sm:mb-2 italic text-indigo-400">
           Mentor Liderando
         </p>
         <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{currentMethod.title}</p>
@@ -252,36 +242,27 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
 
       <div className="w-full max-w-2xl bg-slate-950/50 rounded-[2rem] sm:rounded-[3.5rem] overflow-hidden shadow-2xl h-[400px] sm:h-[450px] flex flex-col border border-slate-800">
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 sm:p-10 space-y-4 sm:space-y-8 scroll-smooth">
-          {history.length === 0 && !displayInputText && !displayOutputText && (
-            <div className="h-full flex items-center justify-center text-center opacity-30 px-6 sm:px-10">
-              <p className="text-[10px] sm:text-xs font-bold uppercase tracking-widest leading-loose">O Mentor está pronto. Tente dizer "Hello" ou comece a ler.</p>
-            </div>
-          )}
-          
+
+          {/* Mensagem inicial fixa */}
+          <div className="flex flex-col items-center">
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 px-4 py-1.5 border border-slate-800 rounded-full">
+              ● Chat iniciado
+            </span>
+          </div>
+
+          {/* Histórico — apenas mensagens do Mentor */}
           {history.map((item, idx) => (
-            <div key={idx} className={`flex flex-col ${item.speaker === 'user' ? 'items-end' : 'items-start'}`}>
-              <span className={`text-[8px] font-black uppercase tracking-[0.3em] mb-1.5 ${item.speaker === 'user' ? 'text-indigo-500' : 'text-slate-600'}`}>
-                {item.speaker === 'user' ? 'Aluno' : 'Mentor'}
+            <div key={idx} className="flex flex-col items-start">
+              <span className="text-[8px] font-black uppercase tracking-[0.3em] mb-1.5 text-slate-600">
+                Mentor
               </span>
-              <div className={`max-w-[92%] sm:max-w-[85%] px-4 py-3 sm:px-6 sm:py-4 rounded-[1.2rem] sm:rounded-[1.8rem] text-[14px] sm:text-[15px] leading-relaxed font-medium shadow-2xl border ${
-                item.speaker === 'user' 
-                  ? 'bg-indigo-600 text-white border-indigo-500 rounded-tr-none' 
-                  : 'bg-slate-900 text-slate-300 border-slate-800 rounded-tl-none'
-              }`}>
+              <div className="max-w-[92%] sm:max-w-[85%] px-4 py-3 sm:px-6 sm:py-4 rounded-[1.2rem] sm:rounded-[1.8rem] text-[14px] sm:text-[15px] leading-relaxed font-medium shadow-2xl border bg-slate-900 text-slate-300 border-slate-800 rounded-tl-none">
                 {item.text}
               </div>
             </div>
           ))}
-          
-          {displayInputText && (
-            <div className="flex flex-col items-end">
-              <span className="text-[8px] font-black uppercase text-indigo-800 mb-1.5 italic tracking-widest animate-pulse">Monitorando voz...</span>
-              <div className="max-w-[92%] sm:max-w-[85%] px-4 py-3 sm:px-6 sm:py-4 bg-slate-900/50 text-indigo-400/80 rounded-[1.2rem] sm:rounded-[1.8rem] rounded-tr-none text-[14px] sm:text-[15px] italic border border-indigo-950">
-                {displayInputText}
-              </div>
-            </div>
-          )}
 
+          {/* Mentor digitando em tempo real */}
           {displayOutputText && (
             <div className="flex flex-col items-start">
               <span className="text-[8px] font-black uppercase text-emerald-800 mb-1.5 italic tracking-widest">Mentor instruindo...</span>
