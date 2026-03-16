@@ -7,11 +7,13 @@ import { METHODOLOGY } from '../constants';
 interface LiveVoiceSessionProps {
   day: DayOfWeek;
   lessonContent: string;
+  mode: 'practice' | 'free';
   onStatusChange: (status: 'idle' | 'connecting' | 'active' | 'error') => void;
   onClose: () => void;
+  onPracticeComplete?: () => void;
 }
 
-const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent, onStatusChange, onClose }) => {
+const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent, mode, onStatusChange, onClose, onPracticeComplete }) => {
   const [localStatus, setLocalStatus] = useState<'connecting' | 'active' | 'error'>('connecting');
   const [history, setHistory] = useState<TranscriptionItem[]>([]);
 
@@ -48,9 +50,15 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
     }
     sourcesRef.current.forEach(s => { try { s.stop(); } catch (e) {} });
     sourcesRef.current.clear();
+
+    // Registra conclusão apenas no modo prática
+    if (mode === 'practice') {
+      onPracticeComplete?.();
+    }
+
     onStatusChange('idle');
     onClose();
-  }, [onStatusChange, onClose]);
+  }, [onStatusChange, onClose, mode, onPracticeComplete]);
 
   const startSession = async () => {
     try {
@@ -76,7 +84,7 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      const systemInstruction = `
+      const practiceInstruction = `
 VOCÊ É UM MENTOR DO INNER VOICE METHOD.
 
 ⚠️ REGRA CRÍTICA DE PACIÊNCIA (OBRIGATÓRIA):
@@ -110,6 +118,26 @@ INSTRUÇÃO TÉCNICA: ${currentMethod.instruction}
 INÍCIO: Saude o aluno brevemente, anuncie a prática de ${currentMethod.day} (${currentMethod.title}) e inicie a leitura da primeira frase do texto para que ele repita.
 `;
 
+      const freeInstruction = `
+VOCÊ É UM MENTOR DO INNER VOICE METHOD.
+
+O aluno já completou a prática estruturada de hoje. Este é um momento de CONVERSAÇÃO LIVRE baseada na lição.
+
+TEXTO DA LIÇÃO (referência): "${lessonContent}"
+
+DIRETRIZES:
+- Converse naturalmente sobre os temas e vocabulário da lição.
+- Expanda as ideias do texto com perguntas abertas e comentários.
+- Corrija erros de pronúncia e gramática de forma leve e natural — sem interromper o fluxo da conversa.
+- Encoraje o aluno a falar livremente, sem roteiro.
+- O objetivo é fluência espontânea, não repetição.
+- AGUARDE sempre a resposta do aluno antes de continuar.
+
+INÍCIO: Cumprimente o aluno, parabenize-o pela prática de hoje e faça uma pergunta aberta sobre o tema da lição para iniciar a conversa.
+`;
+
+      const systemInstruction = mode === 'free' ? freeInstruction : practiceInstruction;
+
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config: {
@@ -141,7 +169,6 @@ INÍCIO: Saude o aluno brevemente, anuncie a prática de ${currentMethod.day} ($
             scriptProcessor.connect(audioContextRef.current!.destination);
           },
           onmessage: async (message) => {
-            // Ignora transcrição do aluno — não exibe no chat
             if (message.serverContent?.outputTranscription) {
               currentOutputTextRef.current += message.serverContent.outputTranscription.text;
               setDisplayOutputText(currentOutputTextRef.current);
@@ -177,7 +204,7 @@ INÍCIO: Saude o aluno brevemente, anuncie a prática de ${currentMethod.day} ($
 
                   source.start(startTime);
                   nextStartTimeRef.current = startTime + buffer.duration;
-                  sourcesRef.current.add(source); // Fix: era sourcesRef.add
+                  sourcesRef.current.add(source);
                 }
               }
             }
@@ -235,7 +262,7 @@ INÍCIO: Saude o aluno brevemente, anuncie a prática de ${currentMethod.day} ($
 
       <div className="text-center">
         <p className="font-black text-[10px] uppercase tracking-[0.4em] mb-1 sm:mb-2 italic text-indigo-400">
-          Mentor Liderando
+          {mode === 'free' ? 'Fala Livre' : 'Mentor Liderando'}
         </p>
         <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{currentMethod.title}</p>
       </div>
@@ -243,14 +270,12 @@ INÍCIO: Saude o aluno brevemente, anuncie a prática de ${currentMethod.day} ($
       <div className="w-full max-w-2xl bg-slate-950/50 rounded-[2rem] sm:rounded-[3.5rem] overflow-hidden shadow-2xl h-[400px] sm:h-[450px] flex flex-col border border-slate-800">
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 sm:p-10 space-y-4 sm:space-y-8 scroll-smooth">
 
-          {/* Mensagem inicial fixa */}
           <div className="flex flex-col items-center">
             <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 px-4 py-1.5 border border-slate-800 rounded-full">
-              ● Chat iniciado
+              ● {mode === 'free' ? 'Fala livre iniciada' : 'Chat iniciado'}
             </span>
           </div>
 
-          {/* Histórico — apenas mensagens do Mentor */}
           {history.map((item, idx) => (
             <div key={idx} className="flex flex-col items-start">
               <span className="text-[8px] font-black uppercase tracking-[0.3em] mb-1.5 text-slate-600">
@@ -262,7 +287,6 @@ INÍCIO: Saude o aluno brevemente, anuncie a prática de ${currentMethod.day} ($
             </div>
           ))}
 
-          {/* Mentor digitando em tempo real */}
           {displayOutputText && (
             <div className="flex flex-col items-start">
               <span className="text-[8px] font-black uppercase text-emerald-800 mb-1.5 italic tracking-widest">Mentor instruindo...</span>
