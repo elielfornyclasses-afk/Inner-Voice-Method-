@@ -518,6 +518,7 @@ const App: React.FC = () => {
                 <LiveVoiceSession
                   day={currentDay}
                   lessonContent={lessonText}
+                  lessonLanguage={lessonLanguage}
                   mode={sessionMode}
                   onStatusChange={setSessionStatus}
                   onClose={() => { setIsSessionActive(false); setSessionStatus('idle'); }}
@@ -536,10 +537,11 @@ const App: React.FC = () => {
                     <p className="text-slate-500 font-medium text-sm">IA Perceptiva com prática técnica e conversação integrada.</p>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md justify-center">
+                    {/* Botão Prática */}
                     <button
                       disabled={!lessonText}
                       onClick={() => { setSessionMode('practice'); setIsSessionActive(true); }}
-                      className="group flex-1 p-10 bg-indigo-600 rounded-[3rem] text-white flex flex-col items-center gap-6 transition-all hover:scale-[1.03] hover:bg-indigo-500 shadow-2xl shadow-indigo-950/40 disabled:opacity-20 disabled:grayscale"
+                      className="group flex-1 p-10 bg-indigo-600 rounded-[3rem] text-white flex flex-col items-center gap-6 transition-all hover:scale-[1.03] hover:bg-indigo-500 shadow-2xl shadow-indigo-950/40 disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed"
                     >
                       <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center group-hover:bg-white/20 transition-colors shadow-inner">
                         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
@@ -550,21 +552,22 @@ const App: React.FC = () => {
                       </div>
                     </button>
 
-                    {practicedToday && (
-                      <button
-                        disabled={!lessonText}
-                        onClick={() => { setSessionMode('free'); setIsSessionActive(true); }}
-                        className="group flex-1 p-10 bg-emerald-900/40 rounded-[3rem] text-white flex flex-col items-center gap-6 transition-all hover:scale-[1.03] hover:bg-emerald-800/40 shadow-2xl border border-emerald-500/20 disabled:opacity-20 disabled:grayscale"
-                      >
-                        <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center group-hover:bg-white/10 transition-colors shadow-inner">
-                          <svg className="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                        </div>
-                        <div className="text-center">
-                          <span className="block font-black text-lg italic mb-1 text-emerald-300">Fala Livre</span>
-                          <span className="text-[10px] font-bold text-emerald-400/60 uppercase tracking-[0.2em]">Conversação Expandida</span>
-                        </div>
-                      </button>
-                    )}
+                    {/* Botão Fala Livre — sempre visível, bloqueado até praticar */}
+                    <button
+                      disabled={!lessonText || !practicedToday}
+                      onClick={() => { setSessionMode('free'); setIsSessionActive(true); }}
+                      className="group flex-1 p-10 bg-emerald-900/40 rounded-[3rem] text-white flex flex-col items-center gap-6 transition-all hover:scale-[1.03] hover:bg-emerald-800/40 shadow-2xl border border-emerald-500/20 disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed"
+                    >
+                      <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center group-hover:bg-white/10 transition-colors shadow-inner">
+                        <svg className="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                      </div>
+                      <div className="text-center">
+                        <span className="block font-black text-lg italic mb-1 text-emerald-300">Fala Livre</span>
+                        <span className="text-[10px] font-bold text-emerald-400/60 uppercase tracking-[0.2em]">
+                          {practicedToday ? 'Conversação Expandida' : 'Conclua a prática primeiro'}
+                        </span>
+                      </div>
+                    </button>
                   </div>
                 </div>
               )}
