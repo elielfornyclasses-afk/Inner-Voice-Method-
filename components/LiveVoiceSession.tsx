@@ -7,13 +7,14 @@ import { METHODOLOGY } from '../constants';
 interface LiveVoiceSessionProps {
   day: DayOfWeek;
   lessonContent: string;
+  lessonLanguage: 'english' | 'french';
   mode: 'practice' | 'free';
   onStatusChange: (status: 'idle' | 'connecting' | 'active' | 'error') => void;
   onClose: () => void;
   onPracticeComplete?: () => void;
 }
 
-const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent, mode, onStatusChange, onClose, onPracticeComplete }) => {
+const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent, lessonLanguage, mode, onStatusChange, onClose, onPracticeComplete }) => {
   const [localStatus, setLocalStatus] = useState<'connecting' | 'active' | 'error'>('connecting');
   const [history, setHistory] = useState<TranscriptionItem[]>([]);
 
@@ -28,6 +29,8 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const currentMethod = METHODOLOGY.find(m => m.day === day)!;
+  const targetLanguage = lessonLanguage === 'french' ? 'French' : 'English';
+  const targetLanguagePT = lessonLanguage === 'french' ? 'francês' : 'inglês';
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -51,7 +54,6 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
     sourcesRef.current.forEach(s => { try { s.stop(); } catch (e) {} });
     sourcesRef.current.clear();
 
-    // Registra conclusão apenas no modo prática
     if (mode === 'practice') {
       onPracticeComplete?.();
     }
@@ -123,6 +125,14 @@ VOCÊ É UM MENTOR DO INNER VOICE METHOD.
 
 O aluno já completou a prática estruturada de hoje. Este é um momento de CONVERSAÇÃO LIVRE baseada na lição.
 
+⚠️ REGRA DE IDIOMA (ABSOLUTA E INVIOLÁVEL):
+O idioma desta lição é ${targetLanguage.toUpperCase()}.
+Você DEVE conduzir TODA a conversa em ${targetLanguage} — sem exceção.
+Se o aluno falar em português ou qualquer outro idioma, responda SEMPRE em ${targetLanguage}.
+NUNCA mude para o português, mesmo que o aluno insista ou faça perguntas em português.
+Se o aluno perguntar algo em português, responda a pergunta em ${targetLanguage}.
+Seu papel é manter o aluno imerso no ${targetLanguagePT}.
+
 TEXTO DA LIÇÃO (referência): "${lessonContent}"
 
 DIRETRIZES:
@@ -133,7 +143,7 @@ DIRETRIZES:
 - O objetivo é fluência espontânea, não repetição.
 - AGUARDE sempre a resposta do aluno antes de continuar.
 
-INÍCIO: Cumprimente o aluno, parabenize-o pela prática de hoje e faça uma pergunta aberta sobre o tema da lição para iniciar a conversa.
+INÍCIO: Cumprimente o aluno em ${targetLanguage}, parabenize-o pela prática de hoje e faça uma pergunta aberta sobre o tema da lição para iniciar a conversa.
 `;
 
       const systemInstruction = mode === 'free' ? freeInstruction : practiceInstruction;
