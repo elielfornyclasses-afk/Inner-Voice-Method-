@@ -14,9 +14,13 @@ interface LiveVoiceSessionProps {
   onPracticeComplete?: () => void;
 }
 
+const MAX_RECONNECTS = 3;
+const RECONNECT_DELAY_MS = 2000;
+
 const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent, lessonLanguage, mode, onStatusChange, onClose, onPracticeComplete }) => {
-  const [localStatus, setLocalStatus] = useState<'connecting' | 'active' | 'error'>('connecting');
+  const [localStatus, setLocalStatus] = useState<'connecting' | 'active' | 'error' | 'reconnecting'>('connecting');
   const [history, setHistory] = useState<TranscriptionItem[]>([]);
+  const [reconnectCount, setReconnectCount] = useState(0);
 
   const currentOutputTextRef = useRef('');
   const [displayOutputText, setDisplayOutputText] = useState('');
@@ -27,6 +31,10 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
   const nextStartTimeRef = useRef(0);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const manualCloseRef = useRef(false);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectCountRef = useRef(0);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const currentMethod = METHODOLOGY.find(m => m.day === day)!;
   const targetLanguage = lessonLanguage === 'french' ? 'French' : 'English';
@@ -38,11 +46,10 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
     }
   }, [history, displayOutputText]);
 
-  const stopSession = useCallback(() => {
-    if (sessionRef.current) {
-      try { sessionRef.current.close?.(); } catch (e) {}
-      sessionRef.current = null;
-    }
+  const cleanupAudio = useCallback(() => {
+    sourcesRef.current.forEach(s => { try { s.stop(); } catch (e) {} });
+    sourcesRef.current.clear();
+
     if (audioContextRef.current) {
       audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
@@ -51,42 +58,43 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
       outputAudioContextRef.current.close().catch(() => {});
       outputAudioContextRef.current = null;
     }
-    sourcesRef.current.forEach(s => { try { s.stop(); } catch (e) {} });
-    sourcesRef.current.clear();
+  }, []);
 
-    if (mode === 'practice') {
-      onPracticeComplete?.();
+  const stopSession = useCallback((manual = true) => {
+    manualCloseRef.current = manual;
+
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
     }
 
-    onStatusChange('idle');
-    onClose();
-  }, [onStatusChange, onClose, mode, onPracticeComplete]);
+    if (sessionRef.current) {
+      try { sessionRef.current.close?.(); } catch (e) {}
+      sessionRef.current = null;
+    }
 
-  const startSession = async () => {
-    try {
-      setLocalStatus('connecting');
-      onStatusChange('connecting');
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
 
-      const apiKey = process.env.API_KEY;
-      if (!apiKey) {
-        setLocalStatus('error');
-        return;
+    cleanupAudio();
+
+    if (manual) {
+      if (mode === 'practice') {
+        onPracticeComplete?.();
       }
+      onStatusChange('idle');
+      onClose();
+    }
+  }, [onStatusChange, onClose, mode, onPracticeComplete, cleanupAudio]);
 
-      const ai = new GoogleGenAI({ apiKey });
+  const buildSystemInstruction = useCallback(() => {
+    const historyContext = history.length > 0
+      ? `\n\nCONTEXTO DA SESSÃO (retomando após reconexão):\nA sessão foi interrompida brevemente. Retome de onde parou de forma natural, sem mencionar a interrupção técnica.`
+      : '';
 
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-      const outputAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-
-      if (audioCtx.state === 'suspended') await audioCtx.resume();
-      if (outputAudioCtx.state === 'suspended') await outputAudioCtx.resume();
-
-      audioContextRef.current = audioCtx;
-      outputAudioContextRef.current = outputAudioCtx;
-
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      const practiceInstruction = `
+    const practiceInstruction = `
 VOCÊ É UM MENTOR DO INNER VOICE METHOD.
 
 ⚠️ REGRA CRÍTICA DE PACIÊNCIA (OBRIGATÓRIA):
@@ -105,6 +113,11 @@ DIRETRIZ MESTRA: "OUÇA E REPITA"
 - NUNCA peça ao aluno para ler sem você ler antes.
 - SEMPRE forneça o modelo de som antes de esperar a produção do aluno.
 
+⚠️ REGRA DE RIGOR (INVIOLÁVEL):
+NUNCA avance para a próxima frase se o aluno cometeu algum erro de pronúncia ou ritmo na frase atual.
+Não importa o tamanho da frase — cada erro DEVE ser corrigido antes de continuar.
+Não existe "erro pequeno demais para corrigir". Se foi errado, corrija sempre.
+
 PROTOCOLO DE CORREÇÃO (OBRIGATÓRIO):
 Sempre que o aluno cometer um erro de pronúncia ou ritmo:
 1. Identifique e diga as PALAVRAS EXATAS que foram erradas.
@@ -118,9 +131,9 @@ PRÁTICA DE HOJE — ${currentMethod.day}: ${currentMethod.title}
 INSTRUÇÃO TÉCNICA: ${currentMethod.instruction}
 
 INÍCIO: Saude o aluno brevemente, anuncie a prática de ${currentMethod.day} (${currentMethod.title}) e inicie a leitura da primeira frase do texto para que ele repita.
-`;
+${historyContext}`;
 
-      const freeInstruction = `
+    const freeInstruction = `
 VOCÊ É UM MENTOR DO INNER VOICE METHOD.
 
 O aluno já completou a prática estruturada de hoje. Este é um momento de CONVERSAÇÃO LIVRE baseada na lição.
@@ -138,15 +151,56 @@ TEXTO DA LIÇÃO (referência): "${lessonContent}"
 DIRETRIZES:
 - Converse naturalmente sobre os temas e vocabulário da lição.
 - Expanda as ideias do texto com perguntas abertas e comentários.
-- Corrija erros de pronúncia e gramática de forma leve e natural — sem interromper o fluxo da conversa.
+- CORREÇÃO OBRIGATÓRIA: Ao final de cada resposta do aluno, se houver erro de pronúncia ou gramática, corrija ANTES de continuar a conversa. Exemplo: "Good! Just a quick note — it's 'she goes', not 'she go'. Can you repeat that? ... Perfect, [continua a conversa]."
+- Após a correção, AGUARDE o aluno repetir a forma correta antes de continuar.
+- A correção deve ser breve, natural, e sempre seguida pela continuação da conversa.
+- NUNCA ignore erros sem corrigir.
 - Encoraje o aluno a falar livremente, sem roteiro.
 - O objetivo é fluência espontânea, não repetição.
 - AGUARDE sempre a resposta do aluno antes de continuar.
 
 INÍCIO: Cumprimente o aluno em ${targetLanguage}, parabenize-o pela prática de hoje e faça uma pergunta aberta sobre o tema da lição para iniciar a conversa.
-`;
+${historyContext}`;
 
-      const systemInstruction = mode === 'free' ? freeInstruction : practiceInstruction;
+    return mode === 'free' ? freeInstruction : practiceInstruction;
+  }, [lessonContent, lessonLanguage, mode, currentMethod, targetLanguage, targetLanguagePT, history]);
+
+  const startSession = useCallback(async () => {
+    try {
+      setLocalStatus(reconnectCountRef.current > 0 ? 'reconnecting' : 'connecting');
+      onStatusChange('connecting');
+
+      // Limpa sessão anterior sem fechar manualmente
+      if (sessionRef.current) {
+        try { sessionRef.current.close?.(); } catch (e) {}
+        sessionRef.current = null;
+      }
+      cleanupAudio();
+
+      const apiKey = process.env.API_KEY;
+      if (!apiKey) {
+        setLocalStatus('error');
+        return;
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      const outputAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+      if (outputAudioCtx.state === 'suspended') await outputAudioCtx.resume();
+
+      audioContextRef.current = audioCtx;
+      outputAudioContextRef.current = outputAudioCtx;
+
+      // Reutiliza stream existente ou cria novo
+      if (!streamRef.current || !streamRef.current.active) {
+        streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+      const stream = streamRef.current;
+
+      const systemInstruction = buildSystemInstruction();
 
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
@@ -163,6 +217,8 @@ INÍCIO: Cumprimente o aluno em ${targetLanguage}, parabenize-o pela prática de
           onopen: () => {
             setLocalStatus('active');
             onStatusChange('active');
+            reconnectCountRef.current = 0;
+            setReconnectCount(0);
 
             const source = audioContextRef.current!.createMediaStreamSource(stream);
             const scriptProcessor = audioContextRef.current!.createScriptProcessor(4096, 1, 1);
@@ -226,25 +282,51 @@ INÍCIO: Cumprimente o aluno em ${targetLanguage}, parabenize-o pela prática de
             }
           },
           onerror: () => {
+            if (manualCloseRef.current) return;
             setLocalStatus('error');
             onStatusChange('error');
-            stopSession();
+            handleUnexpectedClose();
           },
           onclose: () => {
-            onStatusChange('idle');
+            if (manualCloseRef.current) return;
+            handleUnexpectedClose();
           }
         }
       });
       sessionRef.current = await sessionPromise;
     } catch (error) {
+      if (manualCloseRef.current) return;
+      handleUnexpectedClose();
+    }
+  }, [buildSystemInstruction, cleanupAudio, onStatusChange]);
+
+  const handleUnexpectedClose = useCallback(() => {
+    if (manualCloseRef.current) return;
+
+    if (reconnectCountRef.current < MAX_RECONNECTS) {
+      reconnectCountRef.current += 1;
+      setReconnectCount(reconnectCountRef.current);
+      setLocalStatus('reconnecting');
+
+      reconnectTimerRef.current = setTimeout(() => {
+        if (!manualCloseRef.current) {
+          startSession();
+        }
+      }, RECONNECT_DELAY_MS);
+    } else {
+      // Esgotou tentativas
       setLocalStatus('error');
       onStatusChange('error');
     }
-  };
+  }, [startSession, onStatusChange]);
 
   useEffect(() => {
+    manualCloseRef.current = false;
+    reconnectCountRef.current = 0;
     startSession();
-    return () => { stopSession(); };
+    return () => {
+      stopSession(true);
+    };
   }, []);
 
   if (localStatus === 'connecting') {
@@ -252,6 +334,36 @@ INÍCIO: Cumprimente o aluno em ${targetLanguage}, parabenize-o pela prática de
       <div className="flex flex-col items-center gap-8 py-14">
         <div className="w-16 h-16 sm:w-20 sm:h-20 border-[6px] border-slate-900 border-t-indigo-500 rounded-full animate-spin"></div>
         <p className="text-slate-600 font-black text-[11px] uppercase tracking-[0.5em] animate-pulse italic">Iniciando Mentor...</p>
+      </div>
+    );
+  }
+
+  if (localStatus === 'reconnecting') {
+    return (
+      <div className="flex flex-col items-center gap-8 py-14">
+        <div className="w-16 h-16 sm:w-20 sm:h-20 border-[6px] border-slate-900 border-t-amber-500 rounded-full animate-spin"></div>
+        <p className="text-amber-600 font-black text-[11px] uppercase tracking-[0.5em] animate-pulse italic">
+          Reconectando... ({reconnectCount}/{MAX_RECONNECTS})
+        </p>
+      </div>
+    );
+  }
+
+  if (localStatus === 'error') {
+    return (
+      <div className="flex flex-col items-center gap-8 py-14">
+        <div className="w-16 h-16 bg-red-900/30 border-2 border-red-500/30 rounded-full flex items-center justify-center">
+          <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <p className="text-red-400 font-black text-[11px] uppercase tracking-[0.5em] italic">Não foi possível reconectar</p>
+        <button
+          onClick={() => stopSession(true)}
+          className="px-8 py-3 bg-slate-800 text-slate-300 rounded-full font-bold text-[10px] uppercase tracking-widest hover:bg-slate-700 transition-all"
+        >
+          Fechar sessão
+        </button>
       </div>
     );
   }
@@ -309,7 +421,7 @@ INÍCIO: Cumprimente o aluno em ${targetLanguage}, parabenize-o pela prática de
       </div>
 
       <button
-        onClick={stopSession}
+        onClick={() => stopSession(true)}
         className="group flex items-center gap-4 px-8 sm:px-12 py-4 sm:py-5 bg-slate-950 text-slate-400 border border-slate-800 rounded-full font-black hover:text-red-400 transition-all text-[10px] uppercase tracking-[0.3em]"
       >
         <span className="w-2 h-2 bg-red-600 rounded-full"></span>
