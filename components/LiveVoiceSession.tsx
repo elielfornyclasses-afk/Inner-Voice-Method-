@@ -16,6 +16,7 @@ interface LiveVoiceSessionProps {
 
 const MAX_RECONNECTS = 3;
 const RECONNECT_DELAY_MS = 2000;
+const ZOMBIE_TIMEOUT_MS = 45000; // 45s sem mensagem = sessão zumbi
 
 const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent, lessonLanguage, mode, onStatusChange, onClose, onPracticeComplete }) => {
   const [localStatus, setLocalStatus] = useState<'connecting' | 'active' | 'error' | 'reconnecting'>('connecting');
@@ -35,6 +36,8 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectCountRef = useRef(0);
   const streamRef = useRef<MediaStream | null>(null);
+  const lastMessageTimeRef = useRef<number>(Date.now());
+  const zombiePingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const currentMethod = METHODOLOGY.find(m => m.day === day)!;
   const targetLanguage = lessonLanguage === 'french' ? 'French' : 'English';
@@ -49,7 +52,6 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
   const cleanupAudio = useCallback(() => {
     sourcesRef.current.forEach(s => { try { s.stop(); } catch (e) {} });
     sourcesRef.current.clear();
-
     if (audioContextRef.current) {
       audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
@@ -60,34 +62,71 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
     }
   }, []);
 
+  const stopZombiePing = useCallback(() => {
+    if (zombiePingRef.current) {
+      clearInterval(zombiePingRef.current);
+      zombiePingRef.current = null;
+    }
+  }, []);
+
+  const handleUnexpectedClose = useCallback(() => {
+    if (manualCloseRef.current) return;
+    stopZombiePing();
+
+    if (reconnectCountRef.current < MAX_RECONNECTS) {
+      reconnectCountRef.current += 1;
+      setReconnectCount(reconnectCountRef.current);
+      setLocalStatus('reconnecting');
+
+      reconnectTimerRef.current = setTimeout(() => {
+        if (!manualCloseRef.current) {
+          startSession();
+        }
+      }, RECONNECT_DELAY_MS);
+    } else {
+      setLocalStatus('error');
+      onStatusChange('error');
+    }
+  }, [stopZombiePing, onStatusChange]);
+
   const stopSession = useCallback((manual = true) => {
     manualCloseRef.current = manual;
+    stopZombiePing();
 
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
     }
-
     if (sessionRef.current) {
       try { sessionRef.current.close?.(); } catch (e) {}
       sessionRef.current = null;
     }
-
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
-
     cleanupAudio();
 
     if (manual) {
-      if (mode === 'practice') {
-        onPracticeComplete?.();
-      }
+      if (mode === 'practice') onPracticeComplete?.();
       onStatusChange('idle');
       onClose();
     }
-  }, [onStatusChange, onClose, mode, onPracticeComplete, cleanupAudio]);
+  }, [onStatusChange, onClose, mode, onPracticeComplete, cleanupAudio, stopZombiePing]);
+
+  const startZombiePing = useCallback(() => {
+    stopZombiePing();
+    lastMessageTimeRef.current = Date.now();
+
+    zombiePingRef.current = setInterval(() => {
+      if (manualCloseRef.current) return;
+      const elapsed = Date.now() - lastMessageTimeRef.current;
+      if (elapsed > ZOMBIE_TIMEOUT_MS) {
+        console.warn('IVM: sessão zumbi detectada, reconectando...');
+        handleUnexpectedClose();
+      }
+    }, 15000); // verifica a cada 15s
+  }, [stopZombiePing, handleUnexpectedClose]);
 
   const buildSystemInstruction = useCallback(() => {
     const historyContext = history.length > 0
@@ -170,7 +209,6 @@ ${historyContext}`;
       setLocalStatus(reconnectCountRef.current > 0 ? 'reconnecting' : 'connecting');
       onStatusChange('connecting');
 
-      // Limpa sessão anterior sem fechar manualmente
       if (sessionRef.current) {
         try { sessionRef.current.close?.(); } catch (e) {}
         sessionRef.current = null;
@@ -178,10 +216,7 @@ ${historyContext}`;
       cleanupAudio();
 
       const apiKey = process.env.API_KEY;
-      if (!apiKey) {
-        setLocalStatus('error');
-        return;
-      }
+      if (!apiKey) { setLocalStatus('error'); return; }
 
       const ai = new GoogleGenAI({ apiKey });
 
@@ -194,12 +229,10 @@ ${historyContext}`;
       audioContextRef.current = audioCtx;
       outputAudioContextRef.current = outputAudioCtx;
 
-      // Reutiliza stream existente ou cria novo
       if (!streamRef.current || !streamRef.current.active) {
         streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
       const stream = streamRef.current;
-
       const systemInstruction = buildSystemInstruction();
 
       const sessionPromise = ai.live.connect({
@@ -211,7 +244,7 @@ ${historyContext}`;
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
           },
-          systemInstruction: systemInstruction,
+          systemInstruction,
         },
         callbacks: {
           onopen: () => {
@@ -219,6 +252,7 @@ ${historyContext}`;
             onStatusChange('active');
             reconnectCountRef.current = 0;
             setReconnectCount(0);
+            startZombiePing();
 
             const source = audioContextRef.current!.createMediaStreamSource(stream);
             const scriptProcessor = audioContextRef.current!.createScriptProcessor(4096, 1, 1);
@@ -235,6 +269,9 @@ ${historyContext}`;
             scriptProcessor.connect(audioContextRef.current!.destination);
           },
           onmessage: async (message) => {
+            // Atualiza timestamp a cada mensagem recebida
+            lastMessageTimeRef.current = Date.now();
+
             if (message.serverContent?.outputTranscription) {
               currentOutputTextRef.current += message.serverContent.outputTranscription.text;
               setDisplayOutputText(currentOutputTextRef.current);
@@ -264,10 +301,7 @@ ${historyContext}`;
                   source.buffer = buffer;
                   source.connect(ctx.destination);
 
-                  source.onended = () => {
-                    sourcesRef.current.delete(source);
-                  };
-
+                  source.onended = () => { sourcesRef.current.delete(source); };
                   source.start(startTime);
                   nextStartTimeRef.current = startTime + buffer.duration;
                   sourcesRef.current.add(source);
@@ -283,8 +317,6 @@ ${historyContext}`;
           },
           onerror: () => {
             if (manualCloseRef.current) return;
-            setLocalStatus('error');
-            onStatusChange('error');
             handleUnexpectedClose();
           },
           onclose: () => {
@@ -298,35 +330,13 @@ ${historyContext}`;
       if (manualCloseRef.current) return;
       handleUnexpectedClose();
     }
-  }, [buildSystemInstruction, cleanupAudio, onStatusChange]);
-
-  const handleUnexpectedClose = useCallback(() => {
-    if (manualCloseRef.current) return;
-
-    if (reconnectCountRef.current < MAX_RECONNECTS) {
-      reconnectCountRef.current += 1;
-      setReconnectCount(reconnectCountRef.current);
-      setLocalStatus('reconnecting');
-
-      reconnectTimerRef.current = setTimeout(() => {
-        if (!manualCloseRef.current) {
-          startSession();
-        }
-      }, RECONNECT_DELAY_MS);
-    } else {
-      // Esgotou tentativas
-      setLocalStatus('error');
-      onStatusChange('error');
-    }
-  }, [startSession, onStatusChange]);
+  }, [buildSystemInstruction, cleanupAudio, onStatusChange, startZombiePing, handleUnexpectedClose]);
 
   useEffect(() => {
     manualCloseRef.current = false;
     reconnectCountRef.current = 0;
     startSession();
-    return () => {
-      stopSession(true);
-    };
+    return () => { stopSession(true); };
   }, []);
 
   if (localStatus === 'connecting') {
