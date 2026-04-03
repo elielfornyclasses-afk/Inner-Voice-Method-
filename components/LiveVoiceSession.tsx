@@ -14,14 +14,9 @@ interface LiveVoiceSessionProps {
   onPracticeComplete?: () => void;
 }
 
-const MAX_RECONNECTS = 3;
-const RECONNECT_DELAY_MS = 2000;
-const ZOMBIE_TIMEOUT_MS = 45000; // 45s sem mensagem = sessão zumbi
-
 const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent, lessonLanguage, mode, onStatusChange, onClose, onPracticeComplete }) => {
-  const [localStatus, setLocalStatus] = useState<'connecting' | 'active' | 'error' | 'reconnecting'>('connecting');
+  const [localStatus, setLocalStatus] = useState<'connecting' | 'active' | 'error'>('connecting');
   const [history, setHistory] = useState<TranscriptionItem[]>([]);
-  const [reconnectCount, setReconnectCount] = useState(0);
 
   const currentOutputTextRef = useRef('');
   const [displayOutputText, setDisplayOutputText] = useState('');
@@ -32,12 +27,6 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
   const nextStartTimeRef = useRef(0);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
-  const manualCloseRef = useRef(false);
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reconnectCountRef = useRef(0);
-  const streamRef = useRef<MediaStream | null>(null);
-  const lastMessageTimeRef = useRef<number>(Date.now());
-  const zombiePingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const currentMethod = METHODOLOGY.find(m => m.day === day)!;
   const targetLanguage = lessonLanguage === 'french' ? 'French' : 'English';
@@ -49,9 +38,11 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
     }
   }, [history, displayOutputText]);
 
-  const cleanupAudio = useCallback(() => {
-    sourcesRef.current.forEach(s => { try { s.stop(); } catch (e) {} });
-    sourcesRef.current.clear();
+  const stopSession = useCallback(() => {
+    if (sessionRef.current) {
+      try { sessionRef.current.close?.(); } catch (e) {}
+      sessionRef.current = null;
+    }
     if (audioContextRef.current) {
       audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
@@ -60,80 +51,42 @@ const LiveVoiceSession: React.FC<LiveVoiceSessionProps> = ({ day, lessonContent,
       outputAudioContextRef.current.close().catch(() => {});
       outputAudioContextRef.current = null;
     }
-  }, []);
+    sourcesRef.current.forEach(s => { try { s.stop(); } catch (e) {} });
+    sourcesRef.current.clear();
 
-  const stopZombiePing = useCallback(() => {
-    if (zombiePingRef.current) {
-      clearInterval(zombiePingRef.current);
-      zombiePingRef.current = null;
+    if (mode === 'practice') {
+      onPracticeComplete?.();
     }
-  }, []);
 
-  const handleUnexpectedClose = useCallback(() => {
-    if (manualCloseRef.current) return;
-    stopZombiePing();
+    onStatusChange('idle');
+    onClose();
+  }, [onStatusChange, onClose, mode, onPracticeComplete]);
 
-    if (reconnectCountRef.current < MAX_RECONNECTS) {
-      reconnectCountRef.current += 1;
-      setReconnectCount(reconnectCountRef.current);
-      setLocalStatus('reconnecting');
+  const startSession = async () => {
+    try {
+      setLocalStatus('connecting');
+      onStatusChange('connecting');
 
-      reconnectTimerRef.current = setTimeout(() => {
-        if (!manualCloseRef.current) {
-          startSession();
-        }
-      }, RECONNECT_DELAY_MS);
-    } else {
-      setLocalStatus('error');
-      onStatusChange('error');
-    }
-  }, [stopZombiePing, onStatusChange]);
-
-  const stopSession = useCallback((manual = true) => {
-    manualCloseRef.current = manual;
-    stopZombiePing();
-
-    if (reconnectTimerRef.current) {
-      clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-    }
-    if (sessionRef.current) {
-      try { sessionRef.current.close?.(); } catch (e) {}
-      sessionRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    }
-    cleanupAudio();
-
-    if (manual) {
-      if (mode === 'practice') onPracticeComplete?.();
-      onStatusChange('idle');
-      onClose();
-    }
-  }, [onStatusChange, onClose, mode, onPracticeComplete, cleanupAudio, stopZombiePing]);
-
-  const startZombiePing = useCallback(() => {
-    stopZombiePing();
-    lastMessageTimeRef.current = Date.now();
-
-    zombiePingRef.current = setInterval(() => {
-      if (manualCloseRef.current) return;
-      const elapsed = Date.now() - lastMessageTimeRef.current;
-      if (elapsed > ZOMBIE_TIMEOUT_MS) {
-        console.warn('IVM: sessão zumbi detectada, reconectando...');
-        handleUnexpectedClose();
+      const apiKey = process.env.API_KEY;
+      if (!apiKey) {
+        setLocalStatus('error');
+        return;
       }
-    }, 15000); // verifica a cada 15s
-  }, [stopZombiePing, handleUnexpectedClose]);
 
-  const buildSystemInstruction = useCallback(() => {
-    const historyContext = history.length > 0
-      ? `\n\nCONTEXTO DA SESSÃO (retomando após reconexão):\nA sessão foi interrompida brevemente. Retome de onde parou de forma natural, sem mencionar a interrupção técnica.`
-      : '';
+      const ai = new GoogleGenAI({ apiKey });
 
-    const practiceInstruction = `
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      const outputAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+      if (outputAudioCtx.state === 'suspended') await outputAudioCtx.resume();
+
+      audioContextRef.current = audioCtx;
+      outputAudioContextRef.current = outputAudioCtx;
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      const practiceInstruction = `
 VOCÊ É UM MENTOR DO INNER VOICE METHOD.
 
 ⚠️ REGRA CRÍTICA DE PACIÊNCIA (OBRIGATÓRIA):
@@ -170,9 +123,9 @@ PRÁTICA DE HOJE — ${currentMethod.day}: ${currentMethod.title}
 INSTRUÇÃO TÉCNICA: ${currentMethod.instruction}
 
 INÍCIO: Saude o aluno brevemente, anuncie a prática de ${currentMethod.day} (${currentMethod.title}) e inicie a leitura da primeira frase do texto para que ele repita.
-${historyContext}`;
+`;
 
-    const freeInstruction = `
+      const freeInstruction = `
 VOCÊ É UM MENTOR DO INNER VOICE METHOD.
 
 O aluno já completou a prática estruturada de hoje. Este é um momento de CONVERSAÇÃO LIVRE baseada na lição.
@@ -190,7 +143,7 @@ TEXTO DA LIÇÃO (referência): "${lessonContent}"
 DIRETRIZES:
 - Converse naturalmente sobre os temas e vocabulário da lição.
 - Expanda as ideias do texto com perguntas abertas e comentários.
-- CORREÇÃO OBRIGATÓRIA: Ao final de cada resposta do aluno, se houver erro de pronúncia ou gramática, corrija ANTES de continuar a conversa. Exemplo: "Good! Just a quick note — it's 'she goes', not 'she go'. Can you repeat that? ... Perfect, [continua a conversa]."
+- - CORREÇÃO OBRIGATÓRIA: Ao final de cada resposta do aluno, se houver erro de pronúncia ou gramática, corrija ANTES de continuar a conversa. Exemplo: "Good! Just a quick note — it's 'she goes', not 'she go'. Can you repeat that? ... Perfect, [continua a conversa]."
 - Após a correção, AGUARDE o aluno repetir a forma correta antes de continuar.
 - A correção deve ser breve, natural, e sempre seguida pela continuação da conversa.
 - NUNCA ignore erros sem corrigir.
@@ -199,41 +152,9 @@ DIRETRIZES:
 - AGUARDE sempre a resposta do aluno antes de continuar.
 
 INÍCIO: Cumprimente o aluno em ${targetLanguage}, parabenize-o pela prática de hoje e faça uma pergunta aberta sobre o tema da lição para iniciar a conversa.
-${historyContext}`;
+`;
 
-    return mode === 'free' ? freeInstruction : practiceInstruction;
-  }, [lessonContent, lessonLanguage, mode, currentMethod, targetLanguage, targetLanguagePT, history]);
-
-  const startSession = useCallback(async () => {
-    try {
-      setLocalStatus(reconnectCountRef.current > 0 ? 'reconnecting' : 'connecting');
-      onStatusChange('connecting');
-
-      if (sessionRef.current) {
-        try { sessionRef.current.close?.(); } catch (e) {}
-        sessionRef.current = null;
-      }
-      cleanupAudio();
-
-      const apiKey = process.env.API_KEY;
-      if (!apiKey) { setLocalStatus('error'); return; }
-
-      const ai = new GoogleGenAI({ apiKey });
-
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-      const outputAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-
-      if (audioCtx.state === 'suspended') await audioCtx.resume();
-      if (outputAudioCtx.state === 'suspended') await outputAudioCtx.resume();
-
-      audioContextRef.current = audioCtx;
-      outputAudioContextRef.current = outputAudioCtx;
-
-      if (!streamRef.current || !streamRef.current.active) {
-        streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-      }
-      const stream = streamRef.current;
-      const systemInstruction = buildSystemInstruction();
+      const systemInstruction = mode === 'free' ? freeInstruction : practiceInstruction;
 
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
@@ -244,15 +165,12 @@ ${historyContext}`;
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
           },
-          systemInstruction,
+          systemInstruction: systemInstruction,
         },
         callbacks: {
           onopen: () => {
             setLocalStatus('active');
             onStatusChange('active');
-            reconnectCountRef.current = 0;
-            setReconnectCount(0);
-            startZombiePing();
 
             const source = audioContextRef.current!.createMediaStreamSource(stream);
             const scriptProcessor = audioContextRef.current!.createScriptProcessor(4096, 1, 1);
@@ -269,9 +187,6 @@ ${historyContext}`;
             scriptProcessor.connect(audioContextRef.current!.destination);
           },
           onmessage: async (message) => {
-            // Atualiza timestamp a cada mensagem recebida
-            lastMessageTimeRef.current = Date.now();
-
             if (message.serverContent?.outputTranscription) {
               currentOutputTextRef.current += message.serverContent.outputTranscription.text;
               setDisplayOutputText(currentOutputTextRef.current);
@@ -301,7 +216,10 @@ ${historyContext}`;
                   source.buffer = buffer;
                   source.connect(ctx.destination);
 
-                  source.onended = () => { sourcesRef.current.delete(source); };
+                  source.onended = () => {
+                    sourcesRef.current.delete(source);
+                  };
+
                   source.start(startTime);
                   nextStartTimeRef.current = startTime + buffer.duration;
                   sourcesRef.current.add(source);
@@ -316,27 +234,25 @@ ${historyContext}`;
             }
           },
           onerror: () => {
-            if (manualCloseRef.current) return;
-            handleUnexpectedClose();
+            setLocalStatus('error');
+            onStatusChange('error');
+            stopSession();
           },
           onclose: () => {
-            if (manualCloseRef.current) return;
-            handleUnexpectedClose();
+            onStatusChange('idle');
           }
         }
       });
       sessionRef.current = await sessionPromise;
     } catch (error) {
-      if (manualCloseRef.current) return;
-      handleUnexpectedClose();
+      setLocalStatus('error');
+      onStatusChange('error');
     }
-  }, [buildSystemInstruction, cleanupAudio, onStatusChange, startZombiePing, handleUnexpectedClose]);
+  };
 
   useEffect(() => {
-    manualCloseRef.current = false;
-    reconnectCountRef.current = 0;
     startSession();
-    return () => { stopSession(true); };
+    return () => { stopSession(); };
   }, []);
 
   if (localStatus === 'connecting') {
@@ -344,36 +260,6 @@ ${historyContext}`;
       <div className="flex flex-col items-center gap-8 py-14">
         <div className="w-16 h-16 sm:w-20 sm:h-20 border-[6px] border-slate-900 border-t-indigo-500 rounded-full animate-spin"></div>
         <p className="text-slate-600 font-black text-[11px] uppercase tracking-[0.5em] animate-pulse italic">Iniciando Mentor...</p>
-      </div>
-    );
-  }
-
-  if (localStatus === 'reconnecting') {
-    return (
-      <div className="flex flex-col items-center gap-8 py-14">
-        <div className="w-16 h-16 sm:w-20 sm:h-20 border-[6px] border-slate-900 border-t-amber-500 rounded-full animate-spin"></div>
-        <p className="text-amber-600 font-black text-[11px] uppercase tracking-[0.5em] animate-pulse italic">
-          Reconectando... ({reconnectCount}/{MAX_RECONNECTS})
-        </p>
-      </div>
-    );
-  }
-
-  if (localStatus === 'error') {
-    return (
-      <div className="flex flex-col items-center gap-8 py-14">
-        <div className="w-16 h-16 bg-red-900/30 border-2 border-red-500/30 rounded-full flex items-center justify-center">
-          <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-        </div>
-        <p className="text-red-400 font-black text-[11px] uppercase tracking-[0.5em] italic">Não foi possível reconectar</p>
-        <button
-          onClick={() => stopSession(true)}
-          className="px-8 py-3 bg-slate-800 text-slate-300 rounded-full font-bold text-[10px] uppercase tracking-widest hover:bg-slate-700 transition-all"
-        >
-          Fechar sessão
-        </button>
       </div>
     );
   }
@@ -431,7 +317,7 @@ ${historyContext}`;
       </div>
 
       <button
-        onClick={() => stopSession(true)}
+        onClick={stopSession}
         className="group flex items-center gap-4 px-8 sm:px-12 py-4 sm:py-5 bg-slate-950 text-slate-400 border border-slate-800 rounded-full font-black hover:text-red-400 transition-all text-[10px] uppercase tracking-[0.3em]"
       >
         <span className="w-2 h-2 bg-red-600 rounded-full"></span>
